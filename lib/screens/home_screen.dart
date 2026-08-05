@@ -781,7 +781,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _buildDrawer(BuildContext context, bool isDark) {
     final drawerBg = isDark ? AppColors.bgDark : AppColors.bgLight;
     final textStyle = TextStyle(
-      color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
       fontWeight: FontWeight.w600,
       fontSize: 13.5,
     );
@@ -999,7 +999,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             horizontalTitleGap: 8,
             leading: Icon(
               Icons.history_rounded,
-              color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               size: 20,
             ),
             title: Text('Task History', style: textStyle),
@@ -1015,7 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             horizontalTitleGap: 8,
             leading: Icon(
               Icons.settings_rounded,
-              color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               size: 20,
             ),
             title: Text('Settings', style: textStyle),
@@ -2013,7 +2013,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-    ),
-  );
+    );
   }
 }

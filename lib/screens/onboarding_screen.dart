@@ -555,7 +555,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         color: isActive
             ? Theme.of(context).primaryColor
             : isCompleted
-            ? (AppColors.textSecondaryDark : AppColors.textSecondaryLight)
+            ? (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)
             : (isDark ? AppColors.textMutedDark : AppColors.textMutedLight),
       ),
     );
@@ -623,7 +623,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 15,
-              color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               height: 1.55,
             ),
           ),
@@ -777,7 +777,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             'Permissions are needed to interact with other apps.',
             style: TextStyle(
               fontSize: 14,
-              color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 16),
@@ -943,7 +943,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w800,
-          color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
           letterSpacing: 1.5,
         ),
       ),
@@ -1076,7 +1076,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             'Select a provider to prefill API details automatically.',
             style: TextStyle(
               fontSize: 13,
-              color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 20),
@@ -1407,7 +1407,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           labelText: label,
           labelStyle: TextStyle(
             fontSize: 13,
-            color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
           ),
           hintText: hint,
           hintStyle: TextStyle(

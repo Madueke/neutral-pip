@@ -160,6 +160,7 @@ class MessageBubble extends StatelessWidget {
       ),
     ),
   );
+  }
 
   String _formatTime(DateTime dt) {
     final hour = dt.hour.toString().padLeft(2, '0');
