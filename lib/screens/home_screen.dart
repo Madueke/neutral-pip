@@ -14,7 +14,6 @@ import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/trading_avatar.dart';
-import '../widgets/trading_widgets.dart';
 import '../services/telegram_service.dart';
 import '../services/chat_history_service.dart';
 import '../services/notification_service.dart';

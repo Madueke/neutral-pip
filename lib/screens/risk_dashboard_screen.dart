@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/trading_api_service.dart';
-import '../widgets/trading_widgets.dart';
+import '../widgets/price_text.dart';
+import '../widgets/risk_bar.dart';
+import '../widgets/stat_card.dart';
 
 /// Risk dashboard: exposure and daily-loss meters plus open positions.
 ///

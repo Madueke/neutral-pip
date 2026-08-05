@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../config/theme.dart';
 import '../services/task_history_logger.dart';
-import '../widgets/trading_widgets.dart';
+import '../widgets/stat_card.dart';
 
 class TaskHistoryScreen extends StatefulWidget {
   const TaskHistoryScreen({super.key});

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/trading_api_service.dart';
-import '../widgets/trading_widgets.dart';
+import '../widgets/price_text.dart';
+import '../widgets/signal_chip.dart';
+import '../widgets/stat_card.dart';
 
 /// Trading journal: monthly summary strip plus per-trade cards.
 ///
