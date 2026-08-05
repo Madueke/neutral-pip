@@ -204,7 +204,7 @@ class TelegramService {
         '\n'
         '${_escapeHtml(analysis)}\n'
         '$separator\n'
-        '🤖 Meridian Trading Co-Pilot';
+        '🤖 Neutral Pip';
     await _sendHtml(chatId, text);
   }
 
