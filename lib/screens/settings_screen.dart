@@ -11,6 +11,7 @@ import 'task_history_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../config/feature_flags.dart';
+import '../config/theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AiService aiService;
@@ -291,10 +292,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                        title.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       if (subtitle != null) ...[
@@ -304,8 +307,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark
-                                ? const Color(0xFF94A3B8)
-                                : const Color(0xFF475569),
+                                ? AppColors.textSecondaryDark
+                                : AppColors.textSecondaryLight,
                           ),
                         ),
                       ],
@@ -328,35 +331,35 @@ class _SettingsScreenState extends State<SettingsScreen>
     Widget? prefixIcon,
     Widget? suffixIcon,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
       prefixIcon: prefixIcon,
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      fillColor: scheme.surfaceContainerHighest,
       labelStyle: TextStyle(
-        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+        color: scheme.onSurfaceVariant,
         fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
       hintStyle: TextStyle(
-        color: isDark ? const Color(0xFF475569) : const Color(0xFF94A3B8),
+        color: scheme.onSurfaceVariant.withOpacity(0.7),
         fontSize: 13,
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+          color: scheme.outlineVariant,
           width: 1.2,
         ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+          color: scheme.outlineVariant,
           width: 1.2,
         ),
       ),
@@ -401,15 +404,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                         selectedBackgroundColor: Theme.of(
                           context,
                         ).colorScheme.primary,
-                        selectedForegroundColor: Colors.white,
-                        backgroundColor: isDark
-                            ? const Color(0xFF1E293B)
-                            : Colors.white,
-                        foregroundColor: isDark ? Colors.white : Colors.black87,
+                        selectedForegroundColor: AppColors.onAmber,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
+                        foregroundColor: Theme.of(
+                          context,
+                        ).colorScheme.onSurface,
                         side: BorderSide(
-                          color: isDark
-                              ? const Color(0xFF334155)
-                              : const Color(0xFFE2E8F0),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.outlineVariant,
                         ),
                       ),
                       segments: [
@@ -585,12 +590,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                     icon: const Icon(
                       Icons.cloud_download,
                       size: 18,
-                      color: Colors.white,
+                      color: AppColors.onAmber,
                     ),
                     label: const Text(
                       'Fetch',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.onAmber,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                       ),
@@ -623,7 +628,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 title: const Text('Disable Maximum Steps'),
                 subtitle: const Text(
                   '⚠️ Can cause infinite loops.',
-                  style: TextStyle(color: Colors.orange, fontSize: 12),
+                  style: TextStyle(color: AppColors.amber, fontSize: 12),
                 ),
                 value: _disableMaxSteps,
                 onChanged: (bool value) {
@@ -861,6 +866,31 @@ class _SettingsScreenState extends State<SettingsScreen>
                   'Secure API for trading commands - no on-screen automation',
               isDark: isDark,
               children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      size: 8,
+                      color: widget.tradingApiService.isConfigured
+                          ? AppColors.bull
+                          : AppColors.textSecondaryDark,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.tradingApiService.isConfigured
+                          ? 'Connected'
+                          : 'Offline. Add a backend URL below',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: widget.tradingApiService.isConfigured
+                            ? AppColors.bull
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: _tradingBackendUrlController,
                   decoration: _buildInputDecoration(
@@ -893,33 +923,13 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Orailnoor on YouTube'),
-                subtitle: const Text('Subscribe for tutorials and updates'),
+                title: const Text('Creator channels'),
+                subtitle: const Text('Orailnoor & Tech Jarves on YouTube'),
                 leading: const Icon(
                   Icons.play_circle_fill_rounded,
-                  color: Colors.red,
+                  color: AppColors.bear,
                 ),
-                onTap: () {
-                  launchUrl(
-                    Uri.parse('https://www.youtube.com/orailnoor'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Tech Jarves on YouTube'),
-                subtitle: const Text('Subscribe for tutorials and updates'),
-                leading: const Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: Colors.red,
-                ),
-                onTap: () {
-                  launchUrl(
-                    Uri.parse('https://www.youtube.com/techjarves'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
+                onTap: () => _openCreatorChannels(context),
               ),
             ],
           ),
@@ -970,7 +980,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           style: TextStyle(
             color: isGranted
                 ? Theme.of(context).colorScheme.primary
-                : Colors.orange,
+                : (status?.isDenied ?? true
+                      ? AppColors.amber
+                      : AppColors.bear),
             fontSize: 12,
           ),
         ),
@@ -1003,7 +1015,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             style: TextStyle(
               color: _isOverlayPermissionGranted
                   ? Theme.of(context).colorScheme.primary
-                  : Colors.orange,
+                  : AppColors.amber,
               fontSize: 12,
             ),
           ),
@@ -1028,8 +1040,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ? Icons.link
                       : Icons.link_off,
                   color: widget.shizukuService.isAvailable
-                      ? Colors.green
-                      : Colors.grey,
+                      ? AppColors.bull
+                      : AppColors.textSecondaryDark,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -1039,8 +1051,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: widget.shizukuService.isAvailable
-                        ? Colors.green
-                        : Colors.grey,
+                        ? AppColors.bull
+                        : AppColors.textSecondaryDark,
                   ),
                 ),
               ],
@@ -1072,11 +1084,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             ] else ...[
               Row(
                 children: [
-                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                  const Icon(Icons.check_circle, color: AppColors.bull, size: 16),
                   const SizedBox(width: 4),
                   Text(
                     'Permission granted — ADB commands available',
-                    style: TextStyle(color: Colors.green[700], fontSize: 13),
+                    style: TextStyle(color: AppColors.bull, fontSize: 13),
                   ),
                 ],
               ),
@@ -1103,7 +1115,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   children: [
                     Icon(
                       isRunning ? Icons.visibility : Icons.visibility_off,
-                      color: isRunning ? Colors.green : Colors.grey,
+                      color: isRunning ? AppColors.bull : AppColors.textSecondaryDark,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -1112,7 +1124,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           : 'Screen Control is disabled',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: isRunning ? Colors.green : Colors.grey,
+                        color: isRunning ? AppColors.bull : AppColors.textSecondaryDark,
                       ),
                     ),
                   ],
@@ -1135,7 +1147,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ] else ...[
                   Text(
                     'Can read screen, tap, scroll, and type in other apps',
-                    style: TextStyle(color: Colors.green[700], fontSize: 13),
+                    style: TextStyle(color: AppColors.bull, fontSize: 13),
                   ),
                 ],
               ],
@@ -1143,6 +1155,43 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         );
       },
+    );
+  }
+
+  void _openCreatorChannels(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person_outline_rounded),
+              title: const Text('Orailnoor'),
+              subtitle: const Text('youtube.com/orailnoor'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                launchUrl(
+                  Uri.parse('https://www.youtube.com/orailnoor'),
+                  mode: LaunchMode.externalApplication,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline_rounded),
+              title: const Text('Tech Jarves'),
+              subtitle: const Text('youtube.com/techjarves'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                launchUrl(
+                  Uri.parse('https://www.youtube.com/techjarves'),
+                  mode: LaunchMode.externalApplication,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

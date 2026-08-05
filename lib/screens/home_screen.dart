@@ -7,16 +7,21 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
+import '../config/theme.dart';
 import '../services/ai_service.dart';
 import '../services/action_handler.dart';
 import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/trading_avatar.dart';
+import '../widgets/trading_widgets.dart';
 import '../services/telegram_service.dart';
 import '../services/chat_history_service.dart';
 import '../services/notification_service.dart';
 import 'settings_screen.dart';
 import 'task_history_screen.dart';
+import 'journal_screen.dart';
+import 'risk_dashboard_screen.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../main.dart';
 import '../config/feature_flags.dart';
@@ -543,34 +548,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF0C0A15)
-          : const Color(0xFFFFFFFF),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: RichText(
-          text: TextSpan(
-            style: TextStyle(
-              fontSize: 20,
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const TradingAvatar(size: 32),
+            const SizedBox(width: AppTokens.spaceSm),
+            Text(
+              'Neutral Pip',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
-            children: [
-              TextSpan(
-                text: 'Private',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: Theme.of(context).colorScheme.primary,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const TextSpan(
-                text: 'Agent',
-                style: TextStyle(
-                  fontWeight: FontWeight.w400,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
         backgroundColor: Colors.transparent,
         scrolledUnderElevation: 0,
@@ -631,6 +625,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               // Persistent safety badge while Trading Mode is active
               if (_tradingModeEnabled) _buildTradingModeBadge(isDark),
 
+              // Trading quick actions (Trading Mode only)
+              if (_tradingModeEnabled) _buildTradingActionBar(),
+
               // Pill selector switcher
               _buildModeSelector(isDark),
 
@@ -646,17 +643,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.orangeAccent.withOpacity(0.15),
+                    color: AppColors.amber.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: Colors.orangeAccent.withOpacity(0.3),
+                      color: AppColors.amber.withOpacity(0.3),
                     ),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.warning_amber_rounded,
-                        color: Colors.orange,
+                        color: AppColors.amber,
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
@@ -726,7 +723,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.indigoAccent,
+                            AppColors.amber,
                           ),
                         ),
                       ),
@@ -752,12 +749,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         icon: const Icon(
                           Icons.stop_circle_rounded,
                           size: 16,
-                          color: Colors.redAccent,
+                          color: AppColors.bear,
                         ),
                         label: const Text(
                           'Stop',
                           style: TextStyle(
-                            color: Colors.redAccent,
+                            color: AppColors.bear,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -782,14 +779,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildDrawer(BuildContext context, bool isDark) {
-    final drawerBg = isDark ? const Color(0xFF0B0F19) : const Color(0xFFF8FAFC);
+    final drawerBg = isDark ? AppColors.bgDark : AppColors.bgLight;
     final textStyle = TextStyle(
-      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+      color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
       fontWeight: FontWeight.w600,
       fontSize: 13.5,
     );
     final headerStyle = TextStyle(
-      color: isDark ? Colors.white : const Color(0xFF1E293B),
+      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
       fontSize: 17,
       fontWeight: FontWeight.w900,
       letterSpacing: -0.5,
@@ -854,14 +851,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       children: [
                         Icon(
                           Icons.add_comment_rounded,
-                          color: Colors.white,
+                          color: AppColors.onAmber,
                           size: 16,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           'New Chat',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: AppColors.onAmber,
                             fontWeight: FontWeight.bold,
                             fontSize: 13.5,
                           ),
@@ -903,7 +900,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Text(
                       'No recent chats',
                       style: TextStyle(
-                        color: isDark ? Colors.grey[800] : Colors.grey[400],
+                        color: isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondaryLight,
                         fontSize: 12,
                       ),
                     ),
@@ -949,7 +948,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           size: 15,
                           color: isCurrent
                               ? Theme.of(context).colorScheme.primary
-                              : (isDark ? Colors.grey[600] : Colors.grey[500]),
+                              : (Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                         title: Text(
                           session.title,
@@ -961,8 +960,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 : FontWeight.w500,
                             color: isCurrent
                                 ? (isDark
-                                      ? Colors.white
-                                      : const Color(0xFF1E293B))
+                                      ? AppColors.textPrimaryDark
+                                      : AppColors.textPrimaryLight)
                                 : null,
                           ),
                         ),
@@ -970,7 +969,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           icon: Icon(
                             Icons.delete_outline_rounded,
                             size: 16,
-                            color: Colors.redAccent.withOpacity(0.7),
+                            color: AppColors.bear.withOpacity(0.7),
                           ),
                           onPressed: () async {
                             await ChatHistoryService.deleteSession(session.id);
@@ -1000,7 +999,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             horizontalTitleGap: 8,
             leading: Icon(
               Icons.history_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               size: 20,
             ),
             title: Text('Task History', style: textStyle),
@@ -1016,7 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             horizontalTitleGap: 8,
             leading: Icon(
               Icons.settings_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               size: 20,
             ),
             title: Text('Settings', style: textStyle),
@@ -1058,11 +1057,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? const Color(0xFF6366F1).withOpacity(0.24)
-                        : const Color(0xFF4F46E5).withOpacity(0.12),
+                        ? AppColors.amber.withOpacity(0.10)
+                        : AppColors.amber.withOpacity(0.07),
                     isDark
-                        ? const Color(0xFF6366F1).withOpacity(0)
-                        : const Color(0xFF4F46E5).withOpacity(0),
+                        ? AppColors.amber.withOpacity(0)
+                        : AppColors.amber.withOpacity(0),
                   ],
                 ),
               ),
@@ -1079,11 +1078,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? const Color(0xFF38BDF8).withOpacity(0.18)
-                        : const Color(0xFF0EA5E9).withOpacity(0.09),
+                        ? const Color(0xFF334155).withOpacity(0.35)
+                        : const Color(0xFF94A3B8).withOpacity(0.12),
                     isDark
-                        ? const Color(0xFF38BDF8).withOpacity(0)
-                        : const Color(0xFF0EA5E9).withOpacity(0),
+                        ? const Color(0xFF334155).withOpacity(0)
+                        : const Color(0xFF94A3B8).withOpacity(0),
                   ],
                 ),
               ),
@@ -1095,7 +1094,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildModeSelector(bool isDark) {
-    final activeBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
+    final activeBg = Theme.of(context).colorScheme.surfaceContainerHighest;
 
     return Center(
       child: Container(
@@ -1169,20 +1168,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               icon,
               size: 15,
               color: isSelected
-                  ? Colors.white
+                  ? AppColors.onAmber
                   : (isDark
-                        ? const Color(0xFF94A3B8)
-                        : const Color(0xFF475569)),
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondaryLight),
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
                 color: isSelected
-                    ? Colors.white
+                    ? AppColors.onAmber
                     : (isDark
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF475569)),
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondaryLight),
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
@@ -1202,7 +1201,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0))
+          color: (isDark ? AppColors.surfaceElevatedDark : AppColors.surfaceElevatedLight)
               .withOpacity(0.6),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
@@ -1225,8 +1224,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: isDark
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF475569),
+                      ? AppColors.textSecondaryDark
+                      : AppColors.textSecondaryLight,
                 ),
               ),
             ),
@@ -1237,10 +1236,117 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// TRADING MODE: never add tap-based execution here.
+  /// Quick shortcuts only open analysis UI or trigger chart capture;
+  /// execution always happens through the secure backend API.
+  Widget _buildTradingActionBar() {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.spaceLg,
+        0,
+        AppTokens.spaceLg,
+        4,
+      ),
+      child: Row(
+        children: [
+          _buildActionTile(
+            scheme,
+            Icons.screenshot_monitor_outlined,
+            'Capture Chart',
+            () => _captureChartScreenshot(),
+          ),
+          _buildActionTile(
+            scheme,
+            Icons.link_rounded,
+            'Chart URL',
+            () => _promptChartUrl(),
+          ),
+          _buildActionTile(
+            scheme,
+            Icons.menu_book_outlined,
+            'Journal',
+            () => _openJournal(),
+          ),
+          _buildActionTile(
+            scheme,
+            Icons.shield_outlined,
+            'Risk',
+            () => _openRisk(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionTile(
+    ColorScheme scheme,
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+  ) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(vertical: AppTokens.spaceSm),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+            border: Border.all(
+              color: scheme.outlineVariant,
+              width: AppTokens.borderWidth,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 18, color: AppColors.amber),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: AppTokens.fontSizeTiny,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openJournal() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JournalScreen(
+          tradingApiService: _tradingApiService,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openRisk() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RiskDashboardScreen(
+          tradingApiService: _tradingApiService,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// TRADING MODE: never add tap-based execution here.
   /// Mode selection only changes the execution path; it never performs
   /// device actions itself.
   Widget _buildTradingModeSelector(bool isDark) {
-    final activeBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
+    final activeBg = Theme.of(context).colorScheme.surfaceContainerHighest;
 
     return Center(
       child: Container(
@@ -1313,20 +1419,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               icon,
               size: 15,
               color: isSelected
-                  ? Colors.white
+                  ? AppColors.onAmber
                   : (isDark
-                        ? const Color(0xFF94A3B8)
-                        : const Color(0xFF475569)),
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondaryLight),
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
                 color: isSelected
-                    ? Colors.white
+                    ? AppColors.onAmber
                     : (isDark
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF475569)),
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondaryLight),
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
@@ -1361,7 +1467,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       timeGreeting = 'Hello.';
     }
 
-    final suggestions = _mode == 'chat'
+    final suggestions = _tradingModeEnabled
+        ? [
+            'Analyze BTC/USD on the 15m chart',
+            'What is my current risk exposure?',
+            'Show my latest journal entries',
+            'Explain this chart pattern',
+          ]
+        : _mode == 'chat'
         ? [
             'Write a professional email',
             'Explain quantum computing simply',
@@ -1393,8 +1506,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       fontSize: 30,
                       fontWeight: FontWeight.w300,
                       color: isDark
-                          ? const Color(0xFF94A3B8)
-                          : const Color(0xFF64748B),
+                          ? AppColors.textSecondaryDark
+                          : AppColors.textSecondaryLight,
                       letterSpacing: -1.5,
                       height: 1.1,
                     ),
@@ -1413,6 +1526,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
+            if (_tradingModeEnabled) ...[
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(AppTokens.spaceLg),
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+                  border: Border.all(
+                    color: AppColors.amber.withOpacity(0.35),
+                    width: AppTokens.borderWidth,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.candlestick_chart_rounded,
+                      color: AppColors.amber,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Drop a chart screenshot or paste a TradingView URL '
+                        'to get an AI signal read.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 48),
             Align(
               alignment: Alignment.centerLeft,
@@ -1422,8 +1570,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   color: isDark
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF475569),
+                      ? AppColors.textSecondaryDark
+                      : AppColors.textSecondaryLight,
                   letterSpacing: 1.5,
                 ),
               ),
@@ -1449,13 +1597,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                         decoration: BoxDecoration(
                           color: isDark
-                              ? const Color(0xFF151D30)
+                              ? AppColors.surfaceElevatedDark
                               : Colors.white,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: isDark
-                                ? const Color(0xFF243049).withOpacity(0.4)
-                                : const Color(0xFFE2E8F0),
+                                ? AppColors.borderDark
+                                : AppColors.borderLight,
                             width: 1.2,
                           ),
                           boxShadow: [
@@ -1475,8 +1623,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,
                               color: isDark
-                                  ? const Color(0xFFF8FAFC)
-                                  : const Color(0xFF1E293B),
+                                  ? AppColors.textPrimaryDark
+                                  : AppColors.textPrimaryLight,
                             ),
                           ),
                         ),
@@ -1817,8 +1965,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             hintStyle: TextStyle(
                               fontSize: 13,
                               color: isDark
-                                  ? Colors.grey[600]
-                                  : Colors.grey[400],
+                                  ? AppColors.textSecondaryDark
+                                  : AppColors.textSecondaryLight,
                             ),
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 20,
@@ -1847,7 +1995,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           icon: const Icon(
                             Icons.send_rounded,
                             size: 16,
-                            color: Colors.white,
+                            color: AppColors.onAmber,
                           ),
                           onPressed: _isLoading
                               ? null

@@ -50,6 +50,9 @@ dependencies:
   image_picker: ^1.1.2
   file_picker: ^8.1.2
 
+  # Typography (Trading UI)
+  google_fonts: ^6.2.1
+
 dependency_overrides:
   flutter_overlay_window:
     path: ./local_plugins/flutter_overlay_window

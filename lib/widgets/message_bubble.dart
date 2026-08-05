@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../config/theme.dart';
 import '../models/chat_message.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -12,6 +13,7 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.isUser;
+    final scheme = Theme.of(context).colorScheme;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -25,79 +27,89 @@ class MessageBubble extends StatelessWidget {
           top: 4,
           bottom: 4,
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isUser
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.surface,
+              ? AppColors.amber.withOpacity(0.12)
+              : scheme.surface,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(isUser ? 20 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 20),
+            topLeft: const Radius.circular(12),
+            topRight: const Radius.circular(12),
+            bottomLeft: Radius.circular(isUser ? 12 : 4),
+            bottomRight: Radius.circular(isUser ? 4 : 12),
           ),
-          border: isUser
-              ? null
-              : Border.all(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
-                  width: 1.2,
-                ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.15 : 0.02),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          border: Border.all(
+            color: isUser
+                ? AppColors.amber.withOpacity(0.4)
+                : scheme.outlineVariant,
+            width: 1,
+          ),
         ),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Action result badge
-            if (message.actionResult != null) ...[
+            if (!isUser) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                margin: const EdgeInsets.only(bottom: 8),
+                width: 3,
+                height: 26,
+                margin: const EdgeInsets.only(top: 2, right: 10),
                 decoration: BoxDecoration(
-                  color: message.actionResult!.success
-                      ? Colors.green.withOpacity(0.12)
-                      : Colors.red.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: message.actionResult!.success
-                        ? Colors.green.withOpacity(0.3)
-                        : Colors.red.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      message.actionResult!.success
-                          ? Icons.check_circle_rounded
-                          : Icons.error_rounded,
-                      size: 14,
-                      color: message.actionResult!.success
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      message.actionResult!.actionType.toUpperCase().replaceAll('_', ' '),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: message.actionResult!.success
-                            ? Colors.green
-                            : Colors.red,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
+                  color: AppColors.amber,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Action result badge
+                  if (message.actionResult != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: (message.actionResult!.success
+                                ? AppColors.bull
+                                : AppColors.bear)
+                            .withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: (message.actionResult!.success
+                                  ? AppColors.bull
+                                  : AppColors.bear)
+                              .withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            message.actionResult!.success
+                                ? Icons.check_circle_rounded
+                                : Icons.error_rounded,
+                            size: 14,
+                            color: message.actionResult!.success
+                                ? AppColors.bull
+                                : AppColors.bear,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            message.actionResult!.actionType.toUpperCase().replaceAll('_', ' '),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: message.actionResult!.success
+                                  ? AppColors.bull
+                                  : AppColors.bear,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
             // Trading Mode attachments (only present on trading messages;
             // Phone Control messages always carry an empty list, so this
             // never renders outside Trading Mode).
@@ -111,7 +123,7 @@ class MessageBubble extends StatelessWidget {
               SelectableText(
                 message.content,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onPrimary,
+                  color: scheme.onSurface,
                   fontSize: 15,
                   height: 1.4,
                 ),
@@ -122,12 +134,12 @@ class MessageBubble extends StatelessWidget {
                 selectable: true,
                 styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
                   p: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
+                    color: scheme.onSurface,
                     fontSize: 15,
                     height: 1.45,
                   ),
                   listBullet: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
+                    color: scheme.onSurface,
                     fontSize: 15,
                   ),
                 ),
@@ -138,22 +150,16 @@ class MessageBubble extends StatelessWidget {
               _formatTime(message.timestamp),
               style: TextStyle(
                 fontSize: 11,
-                color: isUser
-                    ? Theme.of(context)
-                        .colorScheme
-                        .onPrimary
-                        .withValues(alpha: 0.6)
-                    : Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.5),
+                color: scheme.onSurface.withValues(alpha: 0.5),
               ),
             ),
           ],
         ),
       ),
-    );
-  }
+        ],
+      ),
+    ),
+  );
 
   String _formatTime(DateTime dt) {
     final hour = dt.hour.toString().padLeft(2, '0');
