@@ -159,7 +159,7 @@ abstract final class AppTheme {
         GoogleFonts.jetBrainsMonoTextTheme(base.textTheme);
 
     return ThemeData(
-      brightness: isDark,
+      brightness: isDark ? Brightness.dark : Brightness.light,
       useMaterial3: true,
       scaffoldBackgroundColor: bg,
       canvasColor: bg,

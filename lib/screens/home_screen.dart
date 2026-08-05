@@ -54,7 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // Top-level execution mode: false = Phone Control, true = Trading Mode.
   bool _tradingModeEnabled = false;
-  final TradingApiService _tradingApiService = TradingApiService(_aiService);
+  late final TradingApiService _tradingApiService;
 
   // Trading Mode attachments (image_picker / file_picker)
   final ImagePicker _picker = ImagePicker();
@@ -72,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _telegramService = TelegramService(_actionHandler, _aiService);
+    _tradingApiService = TradingApiService(_aiService);
     _initServices();
     _startOverlayHistorySync();
     // Register as the handler for overlay bubble tasks

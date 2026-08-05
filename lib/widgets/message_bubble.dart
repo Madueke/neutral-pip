@@ -115,7 +115,7 @@ class MessageBubble extends StatelessWidget {
             // never renders outside Trading Mode).
             if (message.attachments.isNotEmpty) ...[
               const SizedBox(height: 8),
-              ...message.attachments.map(_buildAttachment),
+              ...message.attachments.map((a) => _buildAttachment(context, a)),
               const SizedBox(height: 8),
             ],
             // Message text
@@ -174,7 +174,7 @@ class MessageBubble extends StatelessWidget {
   /// TRADING MODE: never add tap-based execution here.
   /// Opening the image viewer only navigates within the app; it never
   /// performs on-screen automation or device actions.
-  Widget _buildAttachment(ChatAttachment attachment) {
+  Widget _buildAttachment(BuildContext context, ChatAttachment attachment) {
     if (attachment.type == 'image') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
@@ -190,7 +190,7 @@ class MessageBubble extends StatelessWidget {
                 height: 200,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) =>
-                    _brokenImageBox(),
+                    _brokenImageBox(context),
               ),
             ),
           ),
@@ -255,7 +255,7 @@ class MessageBubble extends StatelessWidget {
                           File(attachment.path),
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) =>
-                              _brokenImageBox(),
+                              _brokenImageBox(context),
                         ),
                       ),
                     ),
@@ -279,7 +279,7 @@ class MessageBubble extends StatelessWidget {
   }
 
   /// TRADING MODE: never add tap-based execution here.
-  Widget _brokenImageBox() {
+  Widget _brokenImageBox(BuildContext context) {
     return Container(
       width: double.infinity,
       height: 200,
