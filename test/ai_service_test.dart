@@ -25,4 +25,15 @@ void main() {
     expect(AiService.nvidiaDefaultModel, 'z-ai/glm-5.2');
     expect(AiService.nvidiaFreeChatModels.first, 'z-ai/glm-5.2');
   });
+
+  test('OpenRouter quick-select points at the OpenAI-compatible endpoint', () {
+    expect(
+      AiService.openRouterBaseUrl,
+      'https://openrouter.ai/api/v1',
+    );
+    expect(
+      AiService.openRouterDefaultModel,
+      'anthropic/claude-sonnet-4.6',
+    );
+  });
 }
