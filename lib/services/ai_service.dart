@@ -15,6 +15,8 @@ class AiService {
   static const String _defaultModel = 'deepseek-chat';
   static const String nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
   static const String nvidiaDefaultModel = 'z-ai/glm-5.2';
+  static const String openRouterBaseUrl = 'https://openrouter.ai/api/v1';
+  static const String openRouterDefaultModel = 'anthropic/claude-sonnet-4.6';
 
   /// Free, general-purpose chat endpoints verified in NVIDIA's NIM catalog.
   /// The live /models response is intersected with this list so unavailable or

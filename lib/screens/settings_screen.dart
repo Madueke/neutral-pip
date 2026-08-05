@@ -6,6 +6,7 @@ import '../services/ai_service.dart';
 import '../services/shizuku_service.dart';
 import '../services/screen_automation_service.dart';
 import '../services/telegram_service.dart';
+import '../services/trading_api_service.dart';
 import 'task_history_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
@@ -16,6 +17,8 @@ class SettingsScreen extends StatefulWidget {
   final ShizukuService shizukuService;
   final ScreenAutomationService screenAutomationService;
   final TelegramService telegramService;
+  final TradingApiService tradingApiService;
+  final bool tradingModeEnabled;
 
   const SettingsScreen({
     super.key,
@@ -23,6 +26,8 @@ class SettingsScreen extends StatefulWidget {
     required this.shizukuService,
     required this.screenAutomationService,
     required this.telegramService,
+    required this.tradingApiService,
+    required this.tradingModeEnabled,
   });
 
   @override
@@ -35,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   late TextEditingController _baseUrlController;
   late TextEditingController _modelController;
   late TextEditingController _telegramTokenController;
+  late TextEditingController _tradingBackendUrlController;
   bool _obscureKey = true;
   bool _telegramEnabled = false;
   double _maxSteps = 15;
@@ -58,6 +64,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     _telegramTokenController = TextEditingController(
       text: widget.telegramService.botToken,
     );
+    _tradingBackendUrlController = TextEditingController(
+      text: widget.tradingApiService.tradingBackendUrl,
+    );
     _telegramEnabled = widget.telegramService.isEnabled;
     _maxSteps = widget.aiService.rawMaxSteps.toDouble();
     _disableMaxSteps = widget.aiService.disableMaxSteps;
@@ -73,6 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _baseUrlController.addListener(_autoSave);
     _modelController.addListener(_autoSave);
     _telegramTokenController.addListener(_autoSave);
+    _tradingBackendUrlController.addListener(_autoSave);
     _maxTokensController.addListener(_autoSave);
 
     _checkPermissions();
@@ -99,11 +109,13 @@ class _SettingsScreenState extends State<SettingsScreen>
     _baseUrlController.removeListener(_autoSave);
     _modelController.removeListener(_autoSave);
     _telegramTokenController.removeListener(_autoSave);
+    _tradingBackendUrlController.removeListener(_autoSave);
     _maxTokensController.removeListener(_autoSave);
     _apiKeyController.dispose();
     _baseUrlController.dispose();
     _modelController.dispose();
     _telegramTokenController.dispose();
+    _tradingBackendUrlController.dispose();
     _maxTokensController.dispose();
     super.dispose();
   }
@@ -155,6 +167,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     widget.telegramService.saveSettings(
       botToken: _telegramTokenController.text.trim(),
       isEnabled: _telegramEnabled,
+    );
+
+    // TRADING MODE: never add tap-based execution here.
+    widget.tradingApiService.saveSettings(
+      tradingBackendUrl: _tradingBackendUrlController.text.trim(),
     );
 
     widget.aiService.saveMaxSteps(_maxSteps.toInt());
@@ -523,6 +540,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                     },
                   ),
                   ActionChip(
+                    avatar: const Icon(Icons.router_rounded, size: 16),
+                    label: const Text(
+                      'OpenRouter',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    tooltip:
+                        'OpenRouter unified API - Claude, DeepSeek, and more',
+                    onPressed: () {
+                      _baseUrlController.text = AiService.openRouterBaseUrl;
+                      _modelController.text = AiService.openRouterDefaultModel;
+                    },
+                  ),
+                  ActionChip(
                     label: const Text('Custom', style: TextStyle(fontSize: 11)),
                     tooltip: 'Clear fields',
                     onPressed: () {
@@ -822,7 +852,27 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
 
-          // 9. About / Links Card
+          // 9. Trading Mode Backend Card (only shown in Trading Mode)
+          if (widget.tradingModeEnabled)
+            _buildSettingsCard(
+              icon: Icons.api_rounded,
+              title: 'Trading Mode Backend',
+              subtitle:
+                  'Secure API for trading commands - no on-screen automation',
+              isDark: isDark,
+              children: [
+                TextField(
+                  controller: _tradingBackendUrlController,
+                  decoration: _buildInputDecoration(
+                    labelText: 'Trading Backend URL',
+                    hintText: 'https://your-trading-backend.example.com',
+                    prefixIcon: const Icon(Icons.dns_rounded, size: 18),
+                  ),
+                ),
+              ],
+            ),
+
+          // 10. About / Links Card
           _buildSettingsCard(
             icon: Icons.info_outline_rounded,
             title: 'About PrivateAgent',

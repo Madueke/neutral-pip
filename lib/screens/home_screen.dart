@@ -2,10 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:ui';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
 import '../services/ai_service.dart';
 import '../services/action_handler.dart';
+import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
 import '../widgets/message_bubble.dart';
 import '../services/telegram_service.dart';
@@ -16,6 +20,9 @@ import 'task_history_screen.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../main.dart';
 import '../config/feature_flags.dart';
+
+/// Attachment sources available in Trading Mode.
+enum AttachmentSource { gallery, camera, file }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -40,6 +47,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Custom switch state: 'chat' or 'agent'
   String _mode = 'chat';
 
+  // Top-level execution mode: false = Phone Control, true = Trading Mode.
+  bool _tradingModeEnabled = false;
+  final TradingApiService _tradingApiService = TradingApiService();
+
+  // Trading Mode attachments (image_picker / file_picker)
+  final ImagePicker _picker = ImagePicker();
+  final List<ChatAttachment> _pendingAttachments = [];
+
   // Chat Session state tracking
   String _sessionId = DateTime.now().millisecondsSinceEpoch.toString();
   String _sessionTitle = '';
@@ -63,6 +78,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _notificationService.requestPermission();
     await _voiceService.init();
     await _telegramService.init();
+    await _tradingApiService.init();
+    final prefs = await SharedPreferences.getInstance();
+    _tradingModeEnabled = prefs.getBool('trading_mode_enabled') ?? false;
     await _actionHandler.shizuku.checkAvailability();
 
     if (mounted) {
@@ -94,10 +112,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await ChatHistoryService.saveSession(session);
   }
 
-  Future<void> _sendMessage(String text) async {
+  Future<void> _sendMessage(
+    String text, {
+    List<Map<String, dynamic>> attachments = const [],
+  }) async {
     if (text.trim().isEmpty) return;
 
-    final userMessage = ChatMessage(role: 'user', content: text.trim());
+    final userMessage = ChatMessage(
+      role: 'user',
+      content: text.trim(),
+      attachments: attachments
+          .map((a) => ChatAttachment.fromJson(a))
+          .toList(),
+    );
+    _pendingAttachments.clear();
     setState(() {
       _messages.add(userMessage);
       _isLoading = true;
@@ -115,6 +143,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final assistantIndex = _messages.length - 1;
 
     try {
+      if (_tradingModeEnabled) {
+        // TRADING MODE: never add tap-based execution here.
+        // Commands route to the secure trading backend API instead of the
+        // screen-automation agent - no on-device taps are ever performed.
+        final history = _messages
+            .where(
+              (m) =>
+                  (m.role == 'user' || m.role == 'assistant') &&
+                  m.content.isNotEmpty,
+            )
+            .map((m) => {'role': m.role, 'content': m.content})
+            .toList();
+        final response = await _tradingApiService.chat(
+          text.trim(),
+          history,
+          attachments: attachments,
+        );
+        if (mounted) {
+          setState(() {
+            _messages[assistantIndex] = ChatMessage(
+              role: 'assistant',
+              content: response,
+            );
+          });
+        }
+        await _saveSession();
+        return;
+      }
+
       final isAgent = _mode == 'agent';
       final stream = _aiService
           .sendMessageStream(text.trim(), isAgentMode: isAgent)
@@ -535,6 +592,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     shizukuService: _actionHandler.shizuku,
                     screenAutomationService: _actionHandler.screenAutomation,
                     telegramService: _telegramService,
+                    tradingApiService: _tradingApiService,
+                    tradingModeEnabled: _tradingModeEnabled,
                   ),
                 ),
               );
@@ -559,6 +618,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           Column(
             children: [
+              // Top-level mode selector (Phone Control / Trading Mode)
+              _buildTradingModeSelector(isDark),
+
+              // Persistent safety badge while Trading Mode is active
+              if (_tradingModeEnabled) _buildTradingModeBadge(isDark),
+
               // Pill selector switcher
               _buildModeSelector(isDark),
 
@@ -607,6 +672,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 screenAutomationService:
                                     _actionHandler.screenAutomation,
                                 telegramService: _telegramService,
+                                tradingApiService: _tradingApiService,
+                                tradingModeEnabled: _tradingModeEnabled,
                               ),
                             ),
                           );
@@ -956,6 +1023,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     shizukuService: _actionHandler.shizuku,
                     screenAutomationService: _actionHandler.screenAutomation,
                     telegramService: _telegramService,
+                    tradingApiService: _tradingApiService,
+                    tradingModeEnabled: _tradingModeEnabled,
                   ),
                 ),
               );
@@ -1117,6 +1186,155 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildTradingModeBadge(bool isDark) {
+    // TRADING MODE: never add tap-based execution here.
+    // Persistent trust/safety indicator: trades execute via the secure
+    // backend API, never through on-screen automation.
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0))
+              .withOpacity(0.6),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.shield_rounded,
+              size: 14,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Execution via secure API — no on-screen automation used for trades.',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF475569),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTradingModeSelector(bool isDark) {
+    final activeBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
+
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: activeBg,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildTradingModeButton(
+              false,
+              'Phone Control',
+              Icons.phone_android_rounded,
+              isDark,
+            ),
+            _buildTradingModeButton(
+              true,
+              'Trading Mode',
+              Icons.trending_up_rounded,
+              isDark,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTradingModeButton(
+    bool tradingMode,
+    String label,
+    IconData icon,
+    bool isDark,
+  ) {
+    final isSelected = _tradingModeEnabled == tradingMode;
+
+    return GestureDetector(
+      onTap: () => _setTradingMode(tradingMode),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(26),
+          color: isSelected
+              ? Theme.of(context).colorScheme.primary
+              : Colors.transparent,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withOpacity(0.20),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isSelected
+                  ? Colors.white
+                  : (isDark
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF475569)),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected
+                    ? Colors.white
+                    : (isDark
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFF475569)),
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setTradingMode(bool enabled) async {
+    // TRADING MODE: never add tap-based execution here.
+    // This toggle only selects the execution path (secure backend API vs
+    // on-screen automation); it never triggers device actions itself.
+    setState(() {
+      _tradingModeEnabled = enabled;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('trading_mode_enabled', enabled);
+  }
+
   Widget _buildEmptyState(bool isDark) {
     final time = DateTime.now();
     String timeGreeting = 'Hello';
@@ -1261,123 +1479,281 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  List<Map<String, dynamic>> _attachmentMaps() =>
+      _pendingAttachments.map((a) => a.toJson()).toList();
+
+  void _removePendingAttachment(ChatAttachment attachment) {
+    setState(() {
+      _pendingAttachments.remove(attachment);
+    });
+  }
+
+  Future<void> _showAttachmentPicker() async {
+    // TRADING MODE: never add tap-based execution here.
+    // Attachments are sent to the secure backend API alongside the text;
+    // they are never used to drive on-screen automation.
+    final source = await showModalBottomSheet<AttachmentSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Gallery'),
+              subtitle: const Text('Chart screenshots from your library'),
+              onTap: () => Navigator.pop(context, AttachmentSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Camera'),
+              subtitle: const Text('Capture a chart with the camera'),
+              onTap: () => Navigator.pop(context, AttachmentSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file_outlined),
+              title: const Text('File'),
+              subtitle: const Text('PDF, text, or image files'),
+              onTap: () => Navigator.pop(context, AttachmentSource.file),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    switch (source) {
+      case AttachmentSource.gallery:
+        await _pickImage(ImageSource.gallery);
+        break;
+      case AttachmentSource.camera:
+        await _pickImage(ImageSource.camera);
+        break;
+      case AttachmentSource.file:
+        await _pickFile();
+        break;
+    }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(source: source);
+      if (picked == null || !mounted) return;
+      setState(() {
+        _pendingAttachments.add(
+          ChatAttachment(
+            name: picked.name,
+            path: picked.path,
+            type: 'image',
+            mimeType: picked.mimeType,
+          ),
+        );
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not pick image: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'txt', 'md', 'png', 'jpg', 'jpeg'],
+      );
+      if (result == null || result.files.isEmpty || !mounted) return;
+      final file = result.files.first;
+      final lowerName = file.name.toLowerCase();
+      final isImage = lowerName.endsWith('.png') ||
+          lowerName.endsWith('.jpg') ||
+          lowerName.endsWith('.jpeg');
+      setState(() {
+        _pendingAttachments.add(
+          ChatAttachment(
+            name: file.name,
+            path: file.path ?? file.name,
+            type: isImage ? 'image' : 'file',
+            sizeBytes: file.size,
+          ),
+        );
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not pick file: $e')),
+        );
+      }
+    }
+  }
+
   Widget _buildInputBar(bool isDark) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       decoration: const BoxDecoration(color: Colors.transparent),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Glowing Voice Mic button
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _isListening
-                  ? Colors.redAccent
-                  : Theme.of(context).cardTheme.color,
-              border: Border.all(
-                color: _isListening
-                    ? Colors.redAccent
-                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
-                width: 1.2,
+          // Pending attachments (Trading Mode only)
+          if (_tradingModeEnabled && _pendingAttachments.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: _pendingAttachments.map((att) {
+                  return Chip(
+                    avatar: Icon(
+                      att.type == 'image'
+                          ? Icons.image_outlined
+                          : Icons.insert_drive_file_outlined,
+                      size: 16,
+                    ),
+                    label: Text(
+                      att.name,
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    onDeleted: () => _removePendingAttachment(att),
+                  );
+                }).toList(),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-                if (_isListening)
-                  BoxShadow(
-                    color: Colors.redAccent.withOpacity(0.4),
-                    blurRadius: 12,
-                    spreadRadius: 2,
-                  ),
-              ],
             ),
-            child: IconButton(
-              icon: Icon(
-                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                color: _isListening
-                    ? Colors.white
-                    : Theme.of(context).colorScheme.primary,
-              ),
-              onPressed: _isLoading ? null : _toggleVoice,
-            ),
-          ),
-          const SizedBox(width: 10),
-
-          // Custom Text input container
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardTheme.color,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withOpacity(0.08),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
+          Row(
+            children: [
+              // Glowing Voice Mic button
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _isListening
+                      ? Colors.redAccent
+                      : Theme.of(context).cardTheme.color,
+                  border: Border.all(
+                    color: _isListening
+                        ? Colors.redAccent
+                        : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.08),
+                    width: 1.2,
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      style: const TextStyle(fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: _isListening
-                            ? 'Listening...'
-                            : 'Type a command...',
-                        hintStyle: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.grey[600] : Colors.grey[400],
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                        border: InputBorder.none,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                    if (_isListening)
+                      BoxShadow(
+                        color: Colors.redAccent.withOpacity(0.4),
+                        blurRadius: 12,
+                        spreadRadius: 2,
                       ),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: _isLoading
-                          ? null
-                          : (text) => _sendMessage(text),
-                    ),
+                  ],
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                    color: _isListening
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.primary,
                   ),
-
-                  // Solid Send button
-                  Container(
-                    margin: const EdgeInsets.only(right: 6),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.send_rounded,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                      onPressed: _isLoading
-                          ? null
-                          : () => _sendMessage(_textController.text),
-                    ),
-                  ),
-                ],
+                  onPressed: _isLoading ? null : _toggleVoice,
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+
+              // Custom Text input container
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardTheme.color,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.08),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      if (_tradingModeEnabled)
+                        IconButton(
+                          icon: const Icon(Icons.attach_file_rounded, size: 20),
+                          color: Theme.of(context).colorScheme.primary,
+                          tooltip: 'Attach chart image or file',
+                          onPressed: _isLoading ? null : _showAttachmentPicker,
+                        ),
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          style: const TextStyle(fontSize: 14),
+                          decoration: InputDecoration(
+                            hintText: _isListening
+                                ? 'Listening...'
+                                : 'Type a command...',
+                            hintStyle: TextStyle(
+                              fontSize: 13,
+                              color: isDark
+                                  ? Colors.grey[600]
+                                  : Colors.grey[400],
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            border: InputBorder.none,
+                          ),
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: _isLoading
+                              ? null
+                              : (text) => _sendMessage(
+                                    text,
+                                    attachments: _attachmentMaps(),
+                                  ),
+                        ),
+                      ),
+
+                      // Solid Send button
+                      Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.send_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                          onPressed: _isLoading
+                              ? null
+                              : () => _sendMessage(
+                                    _textController.text,
+                                    attachments: _attachmentMaps(),
+                                  ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

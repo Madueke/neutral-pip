@@ -46,6 +46,10 @@ dependencies:
   flutter_overlay_window: ^0.5.0
   flutter_markdown: ^0.7.7+1
 
+  # Attachments (Trading Mode only)
+  image_picker: ^1.1.2
+  file_picker: ^8.1.2
+
 dependency_overrides:
   flutter_overlay_window:
     path: ./local_plugins/flutter_overlay_window

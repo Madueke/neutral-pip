@@ -166,6 +166,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       } else if (provider == 'nvidia') {
         _baseUrlController.text = AiService.nvidiaBaseUrl;
         _modelController.text = AiService.nvidiaDefaultModel;
+      } else if (provider == 'openrouter') {
+        _baseUrlController.text = AiService.openRouterBaseUrl;
+        _modelController.text = AiService.openRouterDefaultModel;
       } else if (provider == 'ollama') {
         _baseUrlController.text = 'http://10.0.2.2:11434/v1';
         _modelController.text = 'gemma2';
@@ -1127,6 +1130,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   'nvidia',
                   'NVIDIA',
                   Icons.memory_rounded,
+                  isDark,
+                ),
+                const SizedBox(width: 10),
+                _buildProviderCard(
+                  'openrouter',
+                  'OpenRouter',
+                  Icons.router_rounded,
                   isDark,
                 ),
                 const SizedBox(width: 10),
