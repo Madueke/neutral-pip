@@ -22,7 +22,7 @@ import '../main.dart';
 import '../config/feature_flags.dart';
 
 /// Attachment sources available in Trading Mode.
-enum AttachmentSource { gallery, camera, file }
+enum AttachmentSource { gallery, camera, file, screenshot, chartUrl }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -49,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // Top-level execution mode: false = Phone Control, true = Trading Mode.
   bool _tradingModeEnabled = false;
-  final TradingApiService _tradingApiService = TradingApiService();
+  final TradingApiService _tradingApiService = TradingApiService(_aiService);
 
   // Trading Mode attachments (image_picker / file_picker)
   final ImagePicker _picker = ImagePicker();
@@ -155,6 +155,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             )
             .map((m) => {'role': m.role, 'content': m.content})
             .toList();
+        // The current user message is the last non-empty entry (the
+        // assistant placeholder that follows has empty content and is
+        // filtered above). It is sent separately as `text` (plus
+        // attachments), so drop it to avoid sending the turn twice.
+        if (history.isNotEmpty) {
+          history.removeLast();
+        }
         final response = await _tradingApiService.chat(
           text.trim(),
           history,
@@ -1229,6 +1236,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// TRADING MODE: never add tap-based execution here.
+  /// Mode selection only changes the execution path; it never performs
+  /// device actions itself.
   Widget _buildTradingModeSelector(bool isDark) {
     final activeBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
 
@@ -1264,6 +1274,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// TRADING MODE: never add tap-based execution here.
+  /// Button selection only changes the execution path; it never performs
+  /// device actions itself.
   Widget _buildTradingModeButton(
     bool tradingMode,
     String label,
@@ -1479,9 +1492,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// TRADING MODE: never add tap-based execution here.
   List<Map<String, dynamic>> _attachmentMaps() =>
       _pendingAttachments.map((a) => a.toJson()).toList();
 
+  /// TRADING MODE: never add tap-based execution here.
   void _removePendingAttachment(ChatAttachment attachment) {
     setState(() {
       _pendingAttachments.remove(attachment);
@@ -1516,6 +1531,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               subtitle: const Text('PDF, text, or image files'),
               onTap: () => Navigator.pop(context, AttachmentSource.file),
             ),
+            ListTile(
+              leading: const Icon(Icons.screenshot_monitor_outlined),
+              title: const Text('Capture Chart'),
+              subtitle: const Text('Screenshot the current chart on screen'),
+              onTap: () => Navigator.pop(context, AttachmentSource.screenshot),
+            ),
+            ListTile(
+              leading: const Icon(Icons.link_rounded),
+              title: const Text('Chart URL'),
+              subtitle: const Text('Paste a public TradingView chart URL'),
+              onTap: () => Navigator.pop(context, AttachmentSource.chartUrl),
+            ),
           ],
         ),
       ),
@@ -1531,9 +1558,88 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case AttachmentSource.file:
         await _pickFile();
         break;
+      case AttachmentSource.screenshot:
+        await _captureChartScreenshot();
+        break;
+      case AttachmentSource.chartUrl:
+        await _promptChartUrl();
+        break;
     }
   }
 
+  Future<void> _captureChartScreenshot() async {
+    // TRADING MODE: never add tap-based execution here.
+    // Capture only reads the current screen (native screenshot); it never
+    // performs taps, swipes, or any other device action.
+    final attachment = await _actionHandler.screenAutomation
+        .captureChartScreenshot();
+    if (!mounted) return;
+    if (attachment == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not capture chart. Requires Android 11+ and the '
+            'accessibility service to be active.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _pendingAttachments.add(attachment);
+    });
+  }
+
+  Future<void> _promptChartUrl() async {
+    // TRADING MODE: never add tap-based execution here.
+    // A chart URL is metadata for the backend; it never triggers any
+    // on-device action itself.
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chart URL'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.url,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'https://www.tradingview.com/chart/...',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (url == null || url.isEmpty || !mounted) return;
+    if (!url.startsWith('http')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid http(s) URL.')),
+      );
+      return;
+    }
+    setState(() {
+      _pendingAttachments.add(
+        ChatAttachment(
+          name: url,
+          path: url,
+          type: 'url',
+        ),
+      );
+    });
+  }
+
+  /// TRADING MODE: never add tap-based execution here.
+  /// Picking an image only adds a local file reference; it never performs
+  /// any device action.
   Future<void> _pickImage(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(source: source);
@@ -1557,6 +1663,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// TRADING MODE: never add tap-based execution here.
+  /// Picking a file only adds a local file reference; it never performs
+  /// any device action.
   Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -1623,8 +1732,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           Row(
             children: [
-              // Glowing Voice Mic button
-              AnimatedContainer(
+              // Glowing Voice Mic button (hidden in Trading Mode - voice
+              // commands would route to the trading API while the mic
+              // drives the Phone Control agent flow).
+              if (!_tradingModeEnabled)
+                AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,

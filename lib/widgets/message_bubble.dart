@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/chat_message.dart';
@@ -96,6 +98,14 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
             ],
+            // Trading Mode attachments (only present on trading messages;
+            // Phone Control messages always carry an empty list, so this
+            // never renders outside Trading Mode).
+            if (message.attachments.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...message.attachments.map(_buildAttachment),
+              const SizedBox(height: 8),
+            ],
             // Message text
             if (isUser)
               SelectableText(
@@ -149,5 +159,142 @@ class MessageBubble extends StatelessWidget {
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
+  }
+
+  /// Build the inline widget for one attachment: a rounded, tappable image
+  /// thumbnail for images, or a file chip (icon + name + size) for files.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  /// Opening the image viewer only navigates within the app; it never
+  /// performs on-screen automation or device actions.
+  Widget _buildAttachment(ChatAttachment attachment) {
+    if (attachment.type == 'image') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Hero(
+            tag: _attachmentHeroTag(attachment),
+            child: GestureDetector(
+              onTap: () => _openImageViewer(context, attachment),
+              child: Image.file(
+                File(attachment.path),
+                width: double.infinity,
+                height: 200,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    _brokenImageBox(),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurface.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.insert_drive_file_outlined,
+              size: 14,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                attachment.sizeBytes != null
+                    ? '${attachment.name} · ${_formatSize(attachment.sizeBytes!)}'
+                    : attachment.name,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Simple full-screen image viewer with pinch-zoom and a Hero transition.
+  void _openImageViewer(BuildContext context, ChatAttachment attachment) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Center(
+                    child: Hero(
+                      tag: _attachmentHeroTag(attachment),
+                      child: InteractiveViewer(
+                        maxScale: 5,
+                        child: Image.file(
+                          File(attachment.path),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              _brokenImageBox(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// TRADING MODE: never add tap-based execution here.
+  Widget _brokenImageBox() {
+    return Container(
+      width: double.infinity,
+      height: 200,
+      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
+      child: Icon(
+        Icons.broken_image_outlined,
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+      ),
+    );
+  }
+
+  /// TRADING MODE: never add tap-based execution here.
+  String _attachmentHeroTag(ChatAttachment attachment) =>
+      'trading_attachment_${message.timestamp.microsecondsSinceEpoch}_'
+      '${attachment.path}';
+
+  /// TRADING MODE: never add tap-based execution here.
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }

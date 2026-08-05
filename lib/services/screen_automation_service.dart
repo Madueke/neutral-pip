@@ -1,6 +1,12 @@
-import 'package:flutter/services.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../models/chat_message.dart';
 
 /// Dart bridge to the native AccessibilityService.
 /// Provides screen reading, UI element interaction, and gesture control.
@@ -76,6 +82,40 @@ class ScreenAutomationService {
       final result = await _channel.invokeMethod<String>('takeScreenshot');
       return result;
     } catch (e) {
+      return null;
+    }
+  }
+
+  /// Capture the current screen as a JPEG file and return it as a Trading
+  /// Mode chart attachment ready for the chat pipeline.
+  ///
+  /// Requires Android 11 (API 30) or higher (native takeScreenshot).
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  /// A screenshot only reads the screen; it never performs taps, swipes,
+  /// or any other device action.
+  Future<ChatAttachment?> captureChartScreenshot() async {
+    try {
+      final base64Jpeg = await takeScreenshot();
+      if (base64Jpeg == null || base64Jpeg.isEmpty) return null;
+
+      final bytes = base64Decode(base64Jpeg);
+      final dir = await getTemporaryDirectory();
+      final file = File(
+        '${dir.path}/chart_screenshot_'
+        '${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+
+      return ChatAttachment(
+        name: 'chart_screenshot.jpg',
+        path: file.path,
+        type: 'image',
+        mimeType: 'image/jpeg',
+        sizeBytes: bytes.length,
+      );
+    } catch (e) {
+      developer.log('captureChartScreenshot failed: $e', name: 'PrivateAgent');
       return null;
     }
   }

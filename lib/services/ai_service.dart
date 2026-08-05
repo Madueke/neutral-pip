@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/agent_action.dart';
+import '../models/chat_message.dart';
 
 class AiResponse {
   final String content;
@@ -567,6 +569,163 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
         await Future.delayed(Duration(seconds: delaySeconds));
       }
     }
+  }
+
+  /// Send a message with image/file attachments as OpenAI-style vision
+  /// content blocks. Used by Trading Mode as the fallback path when the
+  /// trading backend is not configured yet (uses the user's AI key/model).
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  /// This method only reads local files and calls the AI API; it never
+  /// performs on-screen automation.
+  ///
+  /// [history] is the prior conversation. If its trailing entry is the same
+  /// user text as [text], it is dropped so the current turn is not sent
+  /// twice (the current turn is sent below as a vision content array).
+  Future<String> sendVisionMessage(
+    String text,
+    List<ChatAttachment> attachments,
+    List<ChatMessage> history,
+  ) async {
+    if (_apiKey == null || _apiKey!.isEmpty) {
+      throw Exception('API Key is not configured. Please go to Settings.');
+    }
+
+    var priorHistory = history;
+    if (history.isNotEmpty &&
+        history.last.role == 'user' &&
+        history.last.content.trim() == text.trim()) {
+      priorHistory = history.sublist(0, history.length - 1);
+    }
+
+    // Soft vision-capability check: some configured models (e.g. DeepSeek's
+    // default) do not accept image blocks. Warn instead of blocking so the
+    // user knows why the call might fail.
+    const visionModelHints = ['claude', 'gpt-4', 'glm', 'vision', 'gemini'];
+    final modelLower = _model.toLowerCase();
+    final content = <Map<String, dynamic>>[
+      if (!visionModelHints.any((hint) => modelLower.contains(hint)))
+        {
+          'type': 'text',
+          'text': '[Warning: your configured model may not support vision. '
+              'Switch to Claude Sonnet, GPT-4o, or a vision-capable model '
+              'in Settings for chart analysis.]',
+        },
+      {'type': 'text', 'text': text},
+    ];
+    for (final attachment in attachments) {
+      if (attachment.type == 'image') {
+        final file = File(attachment.path);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          final mimeType = attachment.mimeType ?? 'image/jpeg';
+          content.add({
+            'type': 'image_url',
+            'image_url': {
+              'url': 'data:$mimeType;base64,${base64Encode(bytes)}',
+            },
+          });
+        } else {
+          content.add({
+            'type': 'text',
+            'text': '[Image "${attachment.name}" could not be read '
+                '(missing file at ${attachment.path})]',
+          });
+        }
+      } else {
+        content.add({
+          'type': 'text',
+          'text': '[Attached file: "${attachment.name}" '
+              '(${attachment.mimeType ?? 'unknown type'})]',
+        });
+      }
+    }
+
+    final messages = [
+      if (_useSystemPrompt) {'role': 'system', 'content': _chatSystemPrompt},
+      ...priorHistory.map((m) => {'role': m.role, 'content': m.content}),
+      {'role': 'user', 'content': content},
+    ];
+
+    String requestUrl = _baseUrl;
+    if (!requestUrl.endsWith('/chat/completions')) {
+      requestUrl = requestUrl.endsWith('/')
+          ? '${requestUrl}chat/completions'
+          : '$requestUrl/chat/completions';
+    }
+
+    developer.log(
+      'Vision API Request: $requestUrl',
+      name: 'AiService',
+    );
+
+    final response = await http
+        .post(
+          Uri.parse(requestUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_apiKey',
+            'HTTP-Referer': 'https://github.com/orailnoor/private-agent',
+            'X-Title': 'PrivateAgent',
+          },
+          body: jsonEncode({
+            'model': _model,
+            'messages': messages,
+            'temperature': _temperature,
+            'max_tokens': _effectiveMaxTokens,
+          }),
+        )
+        .timeout(const Duration(minutes: 30));
+
+    if (response.statusCode != 200) {
+      String errorMessage = response.body;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['error'] is Map<String, dynamic>) {
+            errorMessage =
+                decoded['error']['message']?.toString() ?? response.body;
+          } else if (decoded['error'] is String) {
+            errorMessage = decoded['error'];
+          }
+        }
+      } catch (_) {
+        // ignore parsing errors, use raw body
+      }
+      throw Exception('API error (${response.statusCode}): $errorMessage');
+    }
+
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic> || !data.containsKey('choices')) {
+      throw Exception('Unexpected API response format: $data');
+    }
+
+    final rawContent = data['choices'][0]['message']['content'];
+    String assistantMessage;
+    if (rawContent is String) {
+      assistantMessage = rawContent;
+    } else if (rawContent is List) {
+      // Some providers return content as a list of text/image blocks.
+      assistantMessage = rawContent
+          .whereType<Map>()
+          .map((block) => block['text']?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .join('\n');
+    } else {
+      throw Exception('Unexpected message content format: $rawContent');
+    }
+
+    // Strip <think> blocks commonly produced by reasoning models
+    assistantMessage = assistantMessage
+        .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
+        .trim();
+
+    if (assistantMessage.trim().isEmpty) {
+      throw Exception(
+        'API returned an empty response. This may be due to rate limits or API instability.',
+      );
+    }
+    return assistantMessage;
   }
 
   /// Parse the AI response to check if it's an action or plain text
