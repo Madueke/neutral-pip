@@ -16,6 +16,7 @@ import '../widgets/logo_loader.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/trading_avatar.dart';
 import '../widgets/trading_widgets.dart';
+import 'chart_screen.dart';
 import '../services/telegram_service.dart';
 import '../services/chat_history_service.dart';
 import '../services/notification_service.dart';
@@ -100,7 +101,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _tradingApiService =
         widget.tradingApiService ?? TradingApiService(_aiService);
     _telegramService =
-        widget.telegramService ?? TelegramService(_aiService, _tradingApiService);
+        widget.telegramService ??
+        TelegramService(_aiService, _tradingApiService);
     _initServices();
     _startOverlayHistorySync();
     // Register as the handler for overlay bubble tasks
@@ -446,9 +448,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await FlutterOverlayWindow.showOverlay(
         enableDrag: true,
         overlayTitle: "Neutral Pip",
-        overlayContent: _isLoading
-            ? "Working..."
-            : "Trading Assistant",
+        overlayContent: _isLoading ? "Working..." : "Trading Assistant",
         flag: OverlayFlag.focusPointer,
         alignment: OverlayAlignment.centerRight,
         visibility: NotificationVisibility.visibilitySecret,
@@ -531,6 +531,11 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.candlestick_chart_rounded),
+            tooltip: 'Live chart',
+            onPressed: _openLiveChart,
+          ),
           IconButton(
             icon: const Icon(Icons.add_comment_outlined),
             tooltip: 'New chat',
@@ -1161,6 +1166,23 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context,
       MaterialPageRoute(
         builder: (_) => JournalScreen(tradingApiService: _tradingApiService),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Open the live TradingView chart for the user's first watchlist symbol.
+  Future<void> _openLiveChart() async {
+    final symbols = await loadWatchlistSymbols();
+    final timeframe = await loadPreferredTimeframe();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChartScreen(
+          initialSymbol: symbols.first,
+          initialTimeframe: timeframe,
+        ),
       ),
     );
     if (mounted) setState(() {});

@@ -113,20 +113,12 @@ class _TickerQuote extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: AppFonts.body(
-            size: 11,
-            weight: FontWeight.w700,
-          ),
-        ),
+        Text(label, style: AppFonts.body(size: 11, weight: FontWeight.w700)),
         const SizedBox(width: 8),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
-          transitionBuilder: (child, animation) => FadeTransition(
-            opacity: animation,
-            child: child,
-          ),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
           child: Text(
             priceText,
             key: ValueKey('tick_$label$priceText'),

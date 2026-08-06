@@ -83,8 +83,7 @@ class _AppShellState extends State<AppShell> {
 
   /// Vertical space the floating nav occupies plus a breathing gap, so tab
   /// content (notably the chat input bar) is never covered by the nav.
-  static const double _navReserve =
-      AppTokens.spaceLg + 68 + AppTokens.spaceLg;
+  static const double _navReserve = AppTokens.spaceLg + 68 + AppTokens.spaceLg;
 
   @override
   Widget build(BuildContext context) {
@@ -153,9 +152,7 @@ class _AppShellState extends State<AppShell> {
           boxShadow: [
             ...AppShadows.card,
             BoxShadow(
-              color: AppColors.amber.withValues(
-                alpha: isDark ? 0.08 : 0.04,
-              ),
+              color: AppColors.amber.withValues(alpha: isDark ? 0.08 : 0.04),
               blurRadius: 32,
             ),
           ],
@@ -163,8 +160,7 @@ class _AppShellState extends State<AppShell> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            for (var i = 0; i < _tabs.length; i++)
-              _buildNavItem(context, i),
+            for (var i = 0; i < _tabs.length; i++) _buildNavItem(context, i),
           ],
         ),
       ),
@@ -221,12 +217,8 @@ class _AppShellState extends State<AppShell> {
                     spec.label,
                     style: TextStyle(
                       fontSize: 9,
-                      fontWeight: selected
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color: selected
-                          ? AppColors.amber
-                          : _muted(context),
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? AppColors.amber : _muted(context),
                       letterSpacing: 0.2,
                     ),
                   ),
@@ -241,9 +233,7 @@ class _AppShellState extends State<AppShell> {
 
   Color _muted(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondaryLight;
+    return isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
   }
 }
 

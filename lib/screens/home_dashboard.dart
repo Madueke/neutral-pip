@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/theme.dart';
 import '../models/home_quick_action.dart';
 import '../models/trade_signal.dart';
@@ -9,6 +10,7 @@ import '../widgets/app_animations.dart';
 import '../widgets/candle_sparkline.dart';
 import '../widgets/trade_card.dart';
 import '../widgets/trading_avatar.dart';
+import 'chart_screen.dart';
 
 /// Dashboard home: briefing, market pulse, watchlist, signals, and quick
 /// actions. Presentational data is clearly marked; real data (recent
@@ -37,6 +39,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Timer? _quoteTimer;
   final Map<String, Map<String, dynamic>> _liveQuotes = {};
   bool _hasUnreadActivity = true;
+  String _preferredTimeframe = 'H1';
 
   static const Duration _quotePollInterval = Duration(seconds: 6);
 
@@ -136,11 +139,30 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   Future<void> _load() async {
     final history = await TaskHistoryLogger.readHistory();
+    final prefs = await SharedPreferences.getInstance();
+    final storedTimeframes = prefs.getStringList('watchlist_timeframes');
     if (!mounted) return;
     setState(() {
       _recentAnalyses = history.take(3).toList();
       _loading = false;
+      _preferredTimeframe = (storedTimeframes != null &&
+              storedTimeframes.isNotEmpty)
+          ? storedTimeframes.first
+          : 'H1';
     });
+  }
+
+  /// Open the live TradingView chart for a watchlist symbol.
+  Future<void> _openChart(_WatchItem item) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ChartScreen(
+          initialSymbol: item.symbol,
+          initialTimeframe: _preferredTimeframe,
+        ),
+      ),
+    );
   }
 
   String get _greeting {
@@ -533,12 +555,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
     final changeColor = changeUp ? AppColors.bull : AppColors.bear;
     final priceText = _fmtPrice(price);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.spaceLg,
-        vertical: AppTokens.spaceMd,
-      ),
-      child: Row(
+    // Tapping a row opens the live TradingView chart for that symbol.
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openChart(item),
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.spaceLg,
+            vertical: AppTokens.spaceMd,
+          ),
+          child: Row(
         children: [
           SizedBox(
             width: 92,
@@ -623,7 +651,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ),
         ],
       ),
-    );
+    ),
+    ),
+  );
   }
 
   Widget _buildRecentAnalyses(bool isDark) {
