@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'dart:ui';
-import '../config/feature_flags.dart';
 import '../config/theme.dart';
 import '../services/ai_service.dart';
-import '../services/screen_automation_service.dart';
 import '../widgets/logo_loader.dart';
 import '../widgets/trading_avatar.dart';
 import 'home_screen.dart';
@@ -21,18 +18,11 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen>
     with WidgetsBindingObserver {
   final PageController _pageController = PageController();
-  final ScreenAutomationService _screenAutomationService =
-      ScreenAutomationService();
   final AiService _aiService = AiService();
 
   int _currentStep = 0;
-  bool _isAccessibilityGranted = false;
   bool _isMicrophoneGranted = false;
   bool _isNotificationsGranted = false;
-  bool _isContactsGranted = false;
-  bool _isPhoneGranted = false;
-  bool _isSmsGranted = false;
-  bool _isOverlayGranted = false;
 
   // AI config states
   String _selectedProvider = 'deepseek';
@@ -84,26 +74,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Future<void> _checkPermissions() async {
-    final accessibilityRunning = await _screenAutomationService
-        .isServiceRunning();
     final microphoneStatus = await Permission.microphone.status;
     final notificationsStatus = await Permission.notification.status;
-    final contactsStatus = await Permission.contacts.status;
-    final phoneStatus = await Permission.phone.status;
-    final smsStatus = await Permission.sms.status;
-    final overlayGranted = FeatureFlags.floatingOverlayEnabled
-        ? await FlutterOverlayWindow.isPermissionGranted()
-        : false;
 
     if (mounted) {
       setState(() {
-        _isAccessibilityGranted = accessibilityRunning;
         _isMicrophoneGranted = microphoneStatus.isGranted;
         _isNotificationsGranted = notificationsStatus.isGranted;
-        _isContactsGranted = contactsStatus.isGranted;
-        _isPhoneGranted = phoneStatus.isGranted;
-        _isSmsGranted = smsStatus.isGranted;
-        _isOverlayGranted = overlayGranted;
       });
     }
   }
@@ -111,49 +88,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Future<void> _requestPermission(Permission permission) async {
     await permission.request();
     _checkPermissions();
-  }
-
-  Future<void> _requestAccessibility() async {
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Enable Screen Control'),
-        content: const Text(
-          'If Android shows “Restricted setting”, open App Info first, tap the '
-          'three-dot menu, and choose “Allow restricted settings”. Then return '
-          'and open Accessibility Settings to enable Neutral Pip Screen Control.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _screenAutomationService.openAccessibilitySettings();
-            },
-            child: const Text('Accessibility Settings'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              openAppSettings();
-            },
-            child: const Text('Open App Info First'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _requestOverlayPermission() async {
-    if (!FeatureFlags.floatingOverlayEnabled) return;
-    bool granted = await FlutterOverlayWindow.isPermissionGranted();
-    if (!granted) {
-      await FlutterOverlayWindow.requestPermission();
-      granted = await FlutterOverlayWindow.isPermissionGranted();
-    }
-    setState(() {
-      _isOverlayGranted = granted;
-    });
   }
 
   Future<void> _skipToHome() async {
@@ -311,7 +245,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
 
       if (mounted) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
         showModalBottomSheet(
           context: context,
           builder: (context) {
@@ -654,9 +587,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 12),
           _buildFeatureCard(
-            Icons.ads_click_rounded,
-            'Phone + Trading Mode',
-            'Control your phone or analyze markets, with execution through a secure API.',
+            Icons.shield_rounded,
+            'Secure Trading Execution',
+            'Every analysis and trade routes through a secure API — never on-device automation.',
+            isDark,
+          ),
+          const SizedBox(height: 12),
+          _buildFeatureCard(
+            Icons.mic_rounded,
+            'Voice Chat',
+            'Speak your questions and hear the assistant read the analysis back.',
             isDark,
           ),
 
@@ -800,9 +740,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'Permissions let the AI interact with other apps. You can skip '
-            'any of them now - when a feature needs one, we will guide you '
-            'to grant it in a single tap.',
+            'These permissions power voice chat and trading alerts. You can '
+            'skip them now - when a feature needs one, we will guide you to '
+            'grant it in a single tap.',
             style: AppFonts.body(
               size: 14,
               color: isDark
@@ -817,15 +757,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               children: [
                 _buildSectionHeader('RECOMMENDED', isDark),
                 _buildPermissionCard(
-                  'Screen Control (Accessibility)',
-                  'Allows the AI to read your screen and automatically perform clicks, scrolls, and typing to execute tasks across other apps on your phone.',
-                  Icons.visibility_rounded,
-                  _isAccessibilityGranted,
-                  _requestAccessibility,
-                  isDark,
-                ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
                   'Microphone',
                   'Required to listen to your voice commands and convert speech to text.',
                   Icons.mic_rounded,
@@ -833,52 +764,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   () => _requestPermission(Permission.microphone),
                   isDark,
                 ),
-                if (FeatureFlags.floatingOverlayEnabled) ...[
-                  const SizedBox(height: 12),
-                  _buildPermissionCard(
-                    'Display Over Other Apps (Floating Bubble)',
-                    'Allows Neutral Pip to show a floating overlay bubble when backgrounded or executing a task so you can monitor progress and execute actions.',
-                    Icons.layers_rounded,
-                    _isOverlayGranted,
-                    _requestOverlayPermission,
-                    isDark,
-                  ),
-                ],
                 const SizedBox(height: 20),
                 _buildSectionHeader('OPTIONAL', isDark),
                 _buildPermissionCard(
                   'Notifications',
-                  'Allows Neutral Pip to show ongoing tasks, alerts, and execution updates in your notification tray.',
+                  'Allows Neutral Pip to show trading alerts and assistant updates in your notification tray.',
                   Icons.notifications_rounded,
                   _isNotificationsGranted,
                   () => _requestPermission(Permission.notification),
-                  isDark,
-                ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
-                  'Contacts',
-                  'Used to look up phone numbers and contact names when you ask the AI to call or text someone.',
-                  Icons.contacts_rounded,
-                  _isContactsGranted,
-                  () => _requestPermission(Permission.contacts),
-                  isDark,
-                ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
-                  'Phone',
-                  'Enables the AI to dial phone calls on your behalf when requested.',
-                  Icons.phone_rounded,
-                  _isPhoneGranted,
-                  () => _requestPermission(Permission.phone),
-                  isDark,
-                ),
-                const SizedBox(height: 12),
-                _buildPermissionCard(
-                  'SMS',
-                  'Allows the AI to send and read text messages on your behalf when requested.',
-                  Icons.sms_rounded,
-                  _isSmsGranted,
-                  () => _requestPermission(Permission.sms),
                   isDark,
                 ),
                 const SizedBox(height: 24),

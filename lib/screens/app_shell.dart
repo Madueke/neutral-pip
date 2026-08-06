@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../config/theme.dart';
 import '../models/home_quick_action.dart';
 import '../services/ai_service.dart';
-import '../services/action_handler.dart';
 import '../services/telegram_service.dart';
 import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
@@ -30,12 +28,10 @@ class _AppShellState extends State<AppShell> {
   // Shared service instances — one per app lifetime, passed to every tab so
   // settings changes propagate everywhere.
   final AiService _aiService = AiService();
-  final ActionHandler _actionHandler = ActionHandler();
   final VoiceService _voiceService = VoiceService();
   final NotificationService _notificationService = NotificationService();
   late final TelegramService _telegramService;
   late final TradingApiService _tradingApiService;
-  bool _tradingModeEnabled = false;
 
   final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
 
@@ -50,8 +46,8 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    _telegramService = TelegramService(_actionHandler, _aiService);
     _tradingApiService = TradingApiService(_aiService);
+    _telegramService = TelegramService(_aiService, _tradingApiService);
     _initServices();
   }
 
@@ -61,9 +57,6 @@ class _AppShellState extends State<AppShell> {
     await _voiceService.init();
     await _telegramService.init();
     await _tradingApiService.init();
-    final prefs = await SharedPreferences.getInstance();
-    _tradingModeEnabled = prefs.getBool('trading_mode_enabled') ?? false;
-    await _actionHandler.shizuku.checkAvailability();
     if (mounted) setState(() {});
   }
 
@@ -76,15 +69,15 @@ class _AppShellState extends State<AppShell> {
     switch (action) {
       case HomeQuickAction.askAi:
         _goToTab(1);
-      case HomeQuickAction.captureChart:
-        _homeKey.currentState?.runQuickAction(action);
-        _goToTab(1);
       case HomeQuickAction.pasteUrl:
         _goToTab(1);
         _homeKey.currentState?.runQuickAction(action);
       case HomeQuickAction.upload:
         _homeKey.currentState?.runQuickAction(action);
         _goToTab(1);
+      case HomeQuickAction.voice:
+        _goToTab(1);
+        _homeKey.currentState?.runQuickAction(action);
     }
   }
 
@@ -105,23 +98,18 @@ class _AppShellState extends State<AppShell> {
                 HomeScreen(
                   key: _homeKey,
                   aiService: _aiService,
-                  actionHandler: _actionHandler,
                   voiceService: _voiceService,
                   notificationService: _notificationService,
                   telegramService: _telegramService,
                   tradingApiService: _tradingApiService,
-                  tradingModeEnabled: _tradingModeEnabled,
                   onOpenSettings: () => _goToTab(4),
                 ),
                 JournalScreen(tradingApiService: _tradingApiService),
                 RiskDashboardScreen(tradingApiService: _tradingApiService),
                 SettingsScreen(
                   aiService: _aiService,
-                  shizukuService: _actionHandler.shizuku,
-                  screenAutomationService: _actionHandler.screenAutomation,
                   telegramService: _telegramService,
                   tradingApiService: _tradingApiService,
-                  tradingModeEnabled: _tradingModeEnabled,
                 ),
               ],
             ),

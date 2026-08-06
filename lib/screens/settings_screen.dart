@@ -4,11 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import '../services/ai_service.dart';
 import '../widgets/logo_loader.dart';
-import '../services/shizuku_service.dart';
-import '../services/screen_automation_service.dart';
 import '../services/telegram_service.dart';
 import '../services/trading_api_service.dart';
-import 'task_history_screen.dart';
+import 'connect_accounts_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../config/feature_flags.dart';
@@ -16,20 +14,14 @@ import '../config/theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AiService aiService;
-  final ShizukuService shizukuService;
-  final ScreenAutomationService screenAutomationService;
   final TelegramService telegramService;
   final TradingApiService tradingApiService;
-  final bool tradingModeEnabled;
 
   const SettingsScreen({
     super.key,
     required this.aiService,
-    required this.shizukuService,
-    required this.screenAutomationService,
     required this.telegramService,
     required this.tradingApiService,
-    required this.tradingModeEnabled,
   });
 
   @override
@@ -45,8 +37,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   late TextEditingController _tradingBackendUrlController;
   bool _obscureKey = true;
   bool _telegramEnabled = false;
-  double _maxSteps = 15;
-  bool _disableMaxSteps = false;
   late TextEditingController _maxTokensController;
   double _temperature = 1.0;
   bool _useScreenCompression = true;
@@ -70,8 +60,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       text: widget.tradingApiService.tradingBackendUrl,
     );
     _telegramEnabled = widget.telegramService.isEnabled;
-    _maxSteps = widget.aiService.rawMaxSteps.toDouble();
-    _disableMaxSteps = widget.aiService.disableMaxSteps;
     _temperature = widget.aiService.temperature;
     _maxTokensController = TextEditingController(
       text: widget.aiService.maxTokens.toString(),
@@ -135,9 +123,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _checkPermissions() async {
     final perms = {
       'Microphone': Permission.microphone,
-      'Contacts': Permission.contacts,
-      'Phone': Permission.phone,
-      'SMS': Permission.sms,
       'Notifications': Permission.notification,
     };
 
@@ -176,8 +161,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       tradingBackendUrl: _tradingBackendUrlController.text.trim(),
     );
 
-    widget.aiService.saveMaxSteps(_maxSteps.toInt());
-    widget.aiService.saveDisableMaxSteps(_disableMaxSteps);
     widget.aiService.saveAdvancedSettings(
       temperature: _temperature,
       maxTokens: int.tryParse(_maxTokensController.text) ?? 1024,
@@ -494,7 +477,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
 
           // 2. AI Engine Config Card
-          _sectionLabel('AI & Agent'),
+          _sectionLabel('AI Model'),
           _buildSettingsCard(
             icon: Icons.psychology_outlined,
             title: 'AI Engine Configuration',
@@ -648,51 +631,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           // 3. Parameters & Tuning Card
           _buildSettingsCard(
             icon: Icons.tune_outlined,
-            title: 'Tuning & Boundaries',
-            subtitle: 'Configure LLM agent parameters',
+            title: 'Response Settings',
+            subtitle: 'Configure the assistant response behavior',
             isDark: isDark,
             children: [
-              SwitchListTile(
-                title: const Text('Disable Maximum Steps'),
-                subtitle: const Text(
-                  '⚠️ Can cause infinite loops.',
-                  style: TextStyle(color: AppColors.amber, fontSize: 12),
-                ),
-                value: _disableMaxSteps,
-                onChanged: (bool value) {
-                  setState(() {
-                    _disableMaxSteps = value;
-                  });
-                  _autoSave();
-                },
-                contentPadding: EdgeInsets.zero,
-              ),
-              if (!_disableMaxSteps) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Maximum Steps Per Task: ${_maxSteps.toInt()}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                ),
-                Slider(
-                  value: _maxSteps,
-                  min: 5,
-                  max: 50,
-                  divisions: 45,
-                  label: _maxSteps.toInt().toString(),
-                  onChanged: (value) {
-                    setState(() {
-                      _maxSteps = value;
-                    });
-                  },
-                  onChangeEnd: (value) {
-                    _autoSave();
-                  },
-                ),
-              ],
-              const SizedBox(height: 12),
               TextField(
                 controller: _maxTokensController,
                 keyboardType: TextInputType.number,
@@ -736,20 +678,6 @@ class _SettingsScreenState extends State<SettingsScreen>
             isDark: isDark,
             children: [
               SwitchListTile(
-                title: const Text('Use Screen Compression'),
-                subtitle: const Text(
-                  'Removes duplicate elements to save tokens',
-                ),
-                value: _useScreenCompression,
-                onChanged: (bool value) {
-                  setState(() {
-                    _useScreenCompression = value;
-                  });
-                  _autoSave();
-                },
-                contentPadding: EdgeInsets.zero,
-              ),
-              SwitchListTile(
                 title: const Text('Send System Prompt'),
                 subtitle: const Text('Turn off for custom LoRA fine-tunes'),
                 value: _useSystemPrompt,
@@ -763,8 +691,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               if (FeatureFlags.floatingOverlayEnabled)
                 SwitchListTile(
-                  title: const Text('Enable Floating Agent Icon'),
-                  subtitle: const Text('Assign tasks without opening the app'),
+                  title: const Text('Enable Floating Assistant Icon'),
+                  subtitle: const Text('Quick access to the co-pilot from any screen'),
                   value: _floatingIconEnabled,
                   onChanged: (val) async {
                     if (val) {
@@ -817,8 +745,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           _sectionLabel('Connectivity'),
           _buildSettingsCard(
             icon: Icons.send_and_archive_outlined,
-            title: 'Telegram Remote Access',
-            subtitle: 'Control your agent remotely from anywhere',
+            title: 'Telegram',
+            subtitle: 'Chat with your trading assistant and receive scheduled '
+                'analysis pushes from anywhere',
             isDark: isDark,
             children: [
               TextField(
@@ -831,7 +760,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               SwitchListTile(
                 title: const Text('Enable Telegram Bot'),
-                subtitle: const Text('Allows remote control via Telegram chat'),
+                subtitle: const Text('Allows chatting with the assistant via '
+                    'Telegram'),
                 value: _telegramEnabled,
                 onChanged: (val) {
                   setState(() => _telegramEnabled = val);
@@ -842,44 +772,79 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
 
-          // 6. Accessibility Screen Control Card
-          _sectionLabel('System Access'),
-          _buildSettingsCard(
-            icon: Icons.visibility_outlined,
-            title: 'Screen Control (Accessibility)',
-            subtitle: 'Required to read screen and perform automated clicks',
-            isDark: isDark,
-            children: [_buildAccessibilityCard()],
-          ),
-
-          // 7. System Permissions Card
+          // 6. App Permissions Card
+          _sectionLabel('App Permissions'),
           _buildSettingsCard(
             icon: Icons.security_outlined,
             title: 'App Permissions',
-            subtitle: 'Required for automation, microphone, and contacts',
+            subtitle: 'Required for voice chat and notifications',
             isDark: isDark,
             children: _buildPermissionTiles(),
           ),
 
-          // 8. Task History Card
+          // 7. Trading Backend Card
+          _sectionLabel('Trading'),
           _buildSettingsCard(
-            icon: Icons.history_outlined,
-            title: 'Execution logs',
-            subtitle: 'View history of tasks and token analytics',
+            icon: Icons.api_rounded,
+            title: 'Trading Backend',
+            subtitle:
+                'Secure API for trading analysis and commands - no on-screen '
+                'automation',
             isDark: isDark,
             children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.circle,
+                    size: 8,
+                    color: widget.tradingApiService.isConfigured
+                        ? AppColors.bull
+                        : AppColors.textSecondaryDark,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    widget.tradingApiService.isConfigured
+                        ? 'Connected'
+                        : 'Offline. Add a backend URL below',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: widget.tradingApiService.isConfigured
+                          ? AppColors.bull
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _tradingBackendUrlController,
+                decoration: _buildInputDecoration(
+                  labelText: 'Trading Backend URL',
+                  hintText: 'https://your-trading-backend.example.com',
+                  prefixIcon: const Icon(Icons.dns_rounded, size: 18),
+                ),
+              ),
+              const SizedBox(height: AppTokens.spaceSm),
+              const Divider(
+                height: AppTokens.spaceXl,
+                color: AppColors.borderDark,
+              ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('View Task History'),
+                leading: const Icon(Icons.link_rounded, color: AppColors.amber),
+                title: const Text('Connect Trading Accounts'),
                 subtitle: const Text(
-                  'Access complete trace of execution steps',
+                  'TradingView watchlist & MT5 real accounts',
                 ),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const TaskHistoryScreen(),
+                      builder: (_) => ConnectAccountsScreen(
+                        tradingApiService: widget.tradingApiService,
+                      ),
                     ),
                   );
                 },
@@ -887,54 +852,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
 
-          // 9. Trading Mode Backend Card (only shown in Trading Mode)
-          if (widget.tradingModeEnabled) ...[
-            _sectionLabel('Trading'),
-            _buildSettingsCard(
-              icon: Icons.api_rounded,
-              title: 'Trading Mode Backend',
-              subtitle:
-                  'Secure API for trading commands - no on-screen automation',
-              isDark: isDark,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.circle,
-                      size: 8,
-                      color: widget.tradingApiService.isConfigured
-                          ? AppColors.bull
-                          : AppColors.textSecondaryDark,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      widget.tradingApiService.isConfigured
-                          ? 'Connected'
-                          : 'Offline. Add a backend URL below',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: widget.tradingApiService.isConfigured
-                            ? AppColors.bull
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _tradingBackendUrlController,
-                  decoration: _buildInputDecoration(
-                    labelText: 'Trading Backend URL',
-                    hintText: 'https://your-trading-backend.example.com',
-                    prefixIcon: const Icon(Icons.dns_rounded, size: 18),
-                  ),
-                ),
-              ],
-            ),
-          ],
-
-          // 10. About / Links Card
+          // 8. About / Links Card
           _sectionLabel('About'),
           _buildSettingsCard(
             icon: Icons.info_outline_rounded,
@@ -974,17 +892,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   List<Widget> _buildPermissionTiles() {
     final permissionMap = {
       'Microphone': Permission.microphone,
-      'Contacts': Permission.contacts,
-      'Phone': Permission.phone,
-      'SMS': Permission.sms,
       'Notifications': Permission.notification,
     };
 
     final icons = {
       'Microphone': Icons.mic,
-      'Contacts': Icons.contacts,
-      'Phone': Icons.phone,
-      'SMS': Icons.sms,
       'Notifications': Icons.notifications,
     };
 
@@ -1055,150 +967,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
 
     return list;
-  }
-
-  Widget _buildShizukuCard() {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppTokens.radiusControl),
-        border: Border.all(color: scheme.outlineVariant, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                widget.shizukuService.isAvailable ? Icons.link : Icons.link_off,
-                color: widget.shizukuService.isAvailable
-                    ? AppColors.bull
-                    : AppColors.textSecondaryDark,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                widget.shizukuService.isAvailable
-                    ? 'Shizuku is running'
-                    : 'Shizuku not detected',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: widget.shizukuService.isAvailable
-                      ? AppColors.bull
-                      : AppColors.textSecondaryDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (!widget.shizukuService.isAvailable) ...[
-            const Text(
-              '1. Install Shizuku from Play Store\n'
-              '2. Open Shizuku and start it via Wireless Debugging\n'
-              '3. Come back here and tap "Check Again"',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: () async {
-                await widget.shizukuService.checkAvailability();
-                if (mounted) setState(() {});
-              },
-              child: const Text('Check Again'),
-            ),
-          ] else if (!widget.shizukuService.hasPermission) ...[
-            OutlinedButton(
-              onPressed: () async {
-                await widget.shizukuService.requestPermission();
-                if (mounted) setState(() {});
-              },
-              child: const Text('Grant Shizuku Permission'),
-            ),
-          ] else ...[
-            Row(
-              children: [
-                const Icon(Icons.check_circle, color: AppColors.bull, size: 16),
-                const SizedBox(width: 4),
-                Text(
-                  'Permission granted — ADB commands available',
-                  style: TextStyle(color: AppColors.bull, fontSize: 13),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAccessibilityCard() {
-    return FutureBuilder<bool>(
-      future: widget.screenAutomationService.isServiceRunning(),
-      builder: (context, snapshot) {
-        final isRunning = snapshot.data ?? false;
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(AppTokens.radiusControl),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-              width: 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    isRunning ? Icons.visibility : Icons.visibility_off,
-                    color: isRunning
-                        ? AppColors.bull
-                        : AppColors.textSecondaryDark,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    isRunning
-                        ? 'Screen Control is active'
-                        : 'Screen Control is disabled',
-                    style: AppFonts.body(
-                      weight: FontWeight.w600,
-                      color: isRunning
-                          ? AppColors.bull
-                          : AppColors.textSecondaryDark,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (!isRunning) ...[
-                Text(
-                  'Tap below to open Accessibility Settings, then find "Neutral Pip Screen Control" and enable it.',
-                  style: AppFonts.body(size: 13),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await widget.screenAutomationService
-                        .openAccessibilitySettings();
-                  },
-                  icon: const Icon(Icons.settings),
-                  label: const Text('Open Accessibility Settings'),
-                ),
-              ] else ...[
-                Text(
-                  'Can read screen, tap, scroll, and type in other apps',
-                  style: AppFonts.body(size: 13, color: AppColors.bull),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
   }
 
   void _openCreatorChannels(BuildContext context) {

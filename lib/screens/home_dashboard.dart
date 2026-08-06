@@ -540,10 +540,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
       childAspectRatio: 0.92,
       children: [
         _QuickAction(
-          icon: Icons.screenshot_monitor_rounded,
-          label: 'Capture Chart',
-          accent: AppColors.amber,
-          onTap: () => widget.onQuickAction(HomeQuickAction.captureChart),
+          icon: Icons.mic_rounded,
+          label: 'Voice Chat',
+          accent: AppColors.bull,
+          onTap: () => widget.onQuickAction(HomeQuickAction.voice),
         ),
         _QuickAction(
           icon: Icons.link_rounded,
@@ -554,7 +554,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _QuickAction(
           icon: Icons.auto_awesome_rounded,
           label: 'Ask AI',
-          accent: AppColors.bull,
+          accent: AppColors.amber,
           onTap: () => widget.onQuickAction(HomeQuickAction.askAi),
         ),
         _QuickAction(

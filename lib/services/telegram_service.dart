@@ -2,20 +2,20 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'action_handler.dart';
 import 'ai_service.dart';
+import 'trading_api_service.dart';
 
 class TelegramService {
-  final ActionHandler _actionHandler;
   final AiService _aiService;
-  
+  final TradingApiService _tradingApiService;
+
   String _botToken = '';
   bool _isEnabled = false;
   int _lastUpdateId = 0;
   bool _isPolling = false;
   Timer? _pollingTimer;
 
-  TelegramService(this._actionHandler, this._aiService);
+  TelegramService(this._aiService, this._tradingApiService);
 
   String get botToken => _botToken;
   bool get isEnabled => _isEnabled;
@@ -106,27 +106,17 @@ class TelegramService {
     await _sendMessage(chatId, '🤖 Received: "$text". Working on it...');
 
     try {
-      // 1. Send text to AI
-      final aiResponse = await _aiService.sendMessage(text);
-      
-      // 2. Parse the action
-      final action = _aiService.parseAction(aiResponse);
-
-      if (action != null) {
-        // 3. Execute the action
-        final result = await _actionHandler.execute(
-          action,
-          aiService: _aiService,
-          onProgress: (msg) {
-            // Send progress updates back to telegram
-            _sendMessage(chatId, '⏳ $msg');
-          },
-        );
-        await _sendMessage(chatId, '✅ ${result.details ?? "Done"}');
-      } else {
-        // It's a plain text response
-        await _sendMessage(chatId, '💬 $aiResponse');
+      // TRADING MODE: never add tap-based execution here.
+      // Incoming messages are answered by the trading assistant (secure
+      // backend API when configured, direct AI otherwise). No device
+      // actions are ever performed from Telegram.
+      String reply;
+      try {
+        reply = await _tradingApiService.chat(text, const []);
+      } catch (_) {
+        reply = await _aiService.sendMessage(text, isAgentMode: false);
       }
+      await _sendMessage(chatId, '💬 $reply');
     } catch (e) {
       await _sendMessage(chatId, '❌ Error: $e');
     }

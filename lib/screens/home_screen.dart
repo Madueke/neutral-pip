@@ -1,17 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
 import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
 import '../models/home_quick_action.dart';
 import '../config/theme.dart';
 import '../services/ai_service.dart';
-import '../services/action_handler.dart';
 import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
 import '../widgets/guide_dialog.dart';
@@ -22,38 +19,33 @@ import '../services/telegram_service.dart';
 import '../services/chat_history_service.dart';
 import '../services/notification_service.dart';
 import 'settings_screen.dart';
-import 'task_history_screen.dart';
 import 'journal_screen.dart';
 import 'risk_dashboard_screen.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../main.dart';
 import '../config/feature_flags.dart';
 
-/// Attachment sources available in Trading Mode.
-enum AttachmentSource { gallery, camera, file, screenshot, chartUrl }
+/// Attachment sources available to the trading assistant.
+enum AttachmentSource { gallery, camera, file, chartUrl }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     this.aiService,
-    this.actionHandler,
     this.voiceService,
     this.notificationService,
     this.telegramService,
     this.tradingApiService,
-    this.tradingModeEnabled,
     this.onOpenSettings,
   });
 
   /// Optional injected services — when provided (e.g. by [AppShell]) the
   /// same instances are shared across tabs so settings propagate.
   final AiService? aiService;
-  final ActionHandler? actionHandler;
   final VoiceService? voiceService;
   final NotificationService? notificationService;
   final TelegramService? telegramService;
   final TradingApiService? tradingApiService;
-  final bool? tradingModeEnabled;
 
   /// When set, the Settings action routes to this callback instead of
   /// pushing a fresh SettingsScreen (used by the tab shell).
@@ -68,23 +60,16 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFocusNode = FocusNode();
   late final AiService _aiService;
-  late final ActionHandler _actionHandler;
   late final VoiceService _voiceService;
   late final NotificationService _notificationService;
   late final TelegramService _telegramService;
+  late final TradingApiService _tradingApiService;
 
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   bool _isListening = false;
 
-  // Custom switch state: 'chat' or 'agent'
-  String _mode = 'chat';
-
-  // Top-level execution mode: false = Phone Control, true = Trading Mode.
-  bool _tradingModeEnabled = false;
-  late final TradingApiService _tradingApiService;
-
-  // Trading Mode attachments (image_picker / file_picker)
+  // Trading attachments (image_picker / file_picker)
   final ImagePicker _picker = ImagePicker();
   final List<ChatAttachment> _pendingAttachments = [];
 
@@ -100,14 +85,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _aiService = widget.aiService ?? AiService();
-    _actionHandler = widget.actionHandler ?? ActionHandler();
     _voiceService = widget.voiceService ?? VoiceService();
     _notificationService = widget.notificationService ?? NotificationService();
-    _telegramService =
-        widget.telegramService ?? TelegramService(_actionHandler, _aiService);
     _tradingApiService =
         widget.tradingApiService ?? TradingApiService(_aiService);
-    _tradingModeEnabled = widget.tradingModeEnabled ?? false;
+    _telegramService =
+        widget.telegramService ?? TelegramService(_aiService, _tradingApiService);
     _initServices();
     _startOverlayHistorySync();
     // Register as the handler for overlay bubble tasks
@@ -117,18 +100,14 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Entry point for dashboard quick actions (AppShell tab routing).
   void runQuickAction(HomeQuickAction action) {
     switch (action) {
-      case HomeQuickAction.captureChart:
-        if (_tradingModeEnabled) {
-          _captureChartScreenshot();
-        } else {
-          _showAttachmentPicker();
-        }
       case HomeQuickAction.pasteUrl:
         _promptChartUrl();
       case HomeQuickAction.askAi:
         _focusInput();
       case HomeQuickAction.upload:
         _showAttachmentPicker();
+      case HomeQuickAction.voice:
+        _toggleVoice();
     }
   }
 
@@ -145,16 +124,13 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _voiceService.init();
     await _telegramService.init();
     await _tradingApiService.init();
-    final prefs = await SharedPreferences.getInstance();
-    _tradingModeEnabled = prefs.getBool('trading_mode_enabled') ?? false;
-    await _actionHandler.shizuku.checkAvailability();
 
     if (mounted) {
       setState(() {});
     }
   }
 
-  /// Opens Settings from a guide dialog (model setup, permissions).
+  /// Opens Settings from a guide dialog (model setup).
   Future<void> _openSettingsFromGuide() async {
     if (!mounted) return;
     final onOpenSettings = widget.onOpenSettings;
@@ -167,15 +143,11 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
           aiService: _aiService,
-          shizukuService: _actionHandler.shizuku,
-          screenAutomationService: _actionHandler.screenAutomation,
           telegramService: _telegramService,
           tradingApiService: _tradingApiService,
-          tradingModeEnabled: _tradingModeEnabled,
         ),
       ),
     );
-    await _actionHandler.shizuku.checkAvailability();
     if (mounted) setState(() {});
   }
 
@@ -208,10 +180,9 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }) async {
     if (text.trim().isEmpty) return;
 
-    // Require an AI model before chatting. Trading Mode with a backend
-    // configured uses the trading API directly and does not need one.
-    final needsAiModel = !(_tradingModeEnabled && _tradingApiService.isConfigured);
-    if (needsAiModel && !_aiService.hasValidConfiguration) {
+    // Require an AI model before chatting. A configured trading backend
+    // handles requests directly and does not need one.
+    if (!_tradingApiService.isConfigured && !_aiService.hasValidConfiguration) {
       await showModelSetupGuide(context, openSettings: _openSettingsFromGuide);
       return;
     }
@@ -231,7 +202,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _scrollToBottom();
     await _saveSession();
 
-    // Add empty placeholder assistant message for streaming
+    // Add empty placeholder assistant message
     final assistantMessage = ChatMessage(role: 'assistant', content: '');
     setState(() {
       _messages.add(assistantMessage);
@@ -239,162 +210,40 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final assistantIndex = _messages.length - 1;
 
     try {
-      if (_tradingModeEnabled) {
-        // TRADING MODE: never add tap-based execution here.
-        // Commands route to the secure trading backend API instead of the
-        // screen-automation agent - no on-device taps are ever performed.
-        final history = _messages
-            .where(
-              (m) =>
-                  (m.role == 'user' || m.role == 'assistant') &&
-                  m.content.isNotEmpty,
-            )
-            .map((m) => {'role': m.role, 'content': m.content})
-            .toList();
-        // The current user message is the last non-empty entry (the
-        // assistant placeholder that follows has empty content and is
-        // filtered above). It is sent separately as `text` (plus
-        // attachments), so drop it to avoid sending the turn twice.
-        if (history.isNotEmpty) {
-          history.removeLast();
-        }
-        final response = await _tradingApiService.chat(
-          text.trim(),
-          history,
-          attachments: attachments,
-        );
-        if (mounted) {
-          setState(() {
-            _messages[assistantIndex] = ChatMessage(
-              role: 'assistant',
-              content: response,
-            );
-          });
-        }
-        await _saveSession();
-        return;
+      // TRADING MODE: never add tap-based execution here.
+      // Commands route to the secure trading backend API - no on-device
+      // taps or screen automation are ever performed.
+      final history = _messages
+          .where(
+            (m) =>
+                (m.role == 'user' || m.role == 'assistant') &&
+                m.content.isNotEmpty,
+          )
+          .map((m) => {'role': m.role, 'content': m.content})
+          .toList();
+      // The current user message is the last non-empty entry (the
+      // assistant placeholder that follows has empty content and is
+      // filtered above). It is sent separately as `text` (plus
+      // attachments), so drop it to avoid sending the turn twice.
+      if (history.isNotEmpty) {
+        history.removeLast();
       }
-
-      final isAgent = _mode == 'agent';
-      final stream = _aiService
-          .sendMessageStream(text.trim(), isAgentMode: isAgent)
-          .timeout(
-            const Duration(seconds: 90),
-            onTimeout: (sink) {
-              sink.addError(
-                TimeoutException(
-                  'The model did not return visible text within 90 seconds.',
-                ),
-              );
-              sink.close();
-            },
+      final response = await _tradingApiService.chat(
+        text.trim(),
+        history,
+        attachments: attachments,
+      );
+      if (mounted) {
+        setState(() {
+          _messages[assistantIndex] = ChatMessage(
+            role: 'assistant',
+            content: response,
           );
-      String accumulated = '';
-
-      await for (final chunk in stream) {
-        accumulated += chunk;
-        if (mounted) {
-          setState(() {
-            _messages[assistantIndex] = ChatMessage(
-              role: 'assistant',
-              content: accumulated,
-            );
-          });
-          _scrollToBottom();
-        }
+        });
       }
+      // Voice chat: read the assistant's reply aloud.
+      unawaited(_voiceService.speak(response));
       await _saveSession();
-
-      // Check if it's an action
-      final action = _aiService.parseAction(accumulated);
-
-      if (action != null) {
-        // If it's an action, we remove the raw JSON message from display
-        setState(() {
-          _messages.removeAt(assistantIndex);
-        });
-
-        // Every action mutates the device, so it needs the accessibility
-        // service. If it is off, guide the user instead of failing silently.
-        final serviceRunning = await _actionHandler.screenAutomation
-            .isServiceRunning();
-        if (!serviceRunning) {
-          if (mounted) {
-            setState(() {
-              _messages.add(
-                ChatMessage(
-                  role: 'assistant',
-                  content:
-                      'I need Screen Control permission to do that. Enable it '
-                      'and I will run your request right away.',
-                ),
-              );
-            });
-            _scrollToBottom();
-            await showAccessibilityGuide(
-              context,
-              _actionHandler.screenAutomation,
-            );
-          }
-          await _saveSession();
-          return;
-        }
-
-        await _showTaskProgressOverlay('Starting: ${text.trim()}');
-
-        // Execute the action (pass aiService for multi-step tasks)
-        final result = await _actionHandler.execute(
-          action,
-          aiService: _aiService,
-          onProgress: (msg) {
-            developer.log('Task progress: $msg', name: 'NeutralPip');
-            _sendOverlayEvent('OVERLAY_PROGRESS', msg);
-            if (mounted) {
-              setState(() {
-                _messages.add(
-                  ChatMessage(role: 'assistant', content: '⏳ $msg'),
-                );
-              });
-              _scrollToBottom();
-            }
-          },
-        );
-
-        setState(() {
-          _messages.add(
-            ChatMessage(
-              role: 'assistant',
-              content: result.success
-                  ? (action.response.isNotEmpty
-                        ? action.response
-                        : (result.details ?? 'Done.'))
-                  : (action.response.isNotEmpty
-                        ? '${action.response}\n\n⚠️ ${result.details}'
-                        : '⚠️ ${result.details}'),
-              actionResult: result,
-            ),
-          );
-        });
-        _sendOverlayEvent(
-          'OVERLAY_TASK_FINISHED',
-          result.success
-              ? (result.details ?? 'Task complete.')
-              : 'Task failed: ${result.details ?? 'Unknown error'}',
-        );
-        if (action.action != 'execute_task') {
-          await _notificationService.showTaskCompleteNotification(
-            result.success ? 'Task Completed' : 'Task Failed',
-            result.details ??
-                (result.success
-                    ? 'Agent finished its goal.'
-                    : 'Agent could not complete the task.'),
-          );
-        }
-        await _saveSession();
-      } else {
-        // Plain text response, we already rendered it, just speak it
-        _voiceService.speak(accumulated);
-      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -418,45 +267,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _updateOverlayState();
       }
     }
-  }
-
-  Future<void> _showTaskProgressOverlay(String message) async {
-    if (!FeatureFlags.floatingOverlayEnabled) return;
-    if (!await FlutterOverlayWindow.isPermissionGranted()) return;
-
-    // Never cover Neutral Pip itself. The lifecycle observer will create the
-    // overlay after an automated action moves this app to the background.
-    if (_appLifecycleState != AppLifecycleState.paused) return;
-
-    if (!await FlutterOverlayWindow.isActive()) {
-      await FlutterOverlayWindow.showOverlay(
-        enableDrag: true,
-        overlayTitle: 'Neutral Pip',
-        overlayContent: 'Performing task...',
-        flag: OverlayFlag.focusPointer,
-        alignment: OverlayAlignment.centerRight,
-        visibility: NotificationVisibility.visibilitySecret,
-        positionGravity: PositionGravity.auto,
-        startPosition: const OverlayPosition(0, 200),
-        width: 56,
-        height: 56,
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    }
-
-    // Keep the overlay minimized during automation. The user can still tap the
-    // bubble to open the full conversation whenever they choose.
-    _sendOverlayEvent('OVERLAY_TASK_STARTED', message);
-  }
-
-  void _sendOverlayEvent(String type, String message) {
-    if (!FeatureFlags.floatingOverlayEnabled) return;
-    final safeMessage = message.replaceAll('|', ' ');
-    unawaited(
-      FlutterOverlayWindow.shareData(
-        '$type|$safeMessage',
-      ).timeout(const Duration(seconds: 2)).catchError((Object _) {}),
-    );
   }
 
   Future<void> _sendOverlayHistorySnapshot() async {
@@ -529,13 +339,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       for (final m in session.messages) {
         _messages.add(ChatMessage.fromJson(m));
       }
-
-      _aiService.clearHistory();
-      for (final m in _messages) {
-        if (m.actionResult != null) continue;
-        _aiService.addHistoryMessage(m.role, m.content);
-      }
     });
+
+    _aiService.clearHistory();
+    for (final m in _messages) {
+      _aiService.addHistoryMessage(m.role, m.content);
+    }
     _scrollToBottom();
   }
 
@@ -593,9 +402,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       final imported = handoff.map(ChatMessage.fromJson).toList();
       for (final message in imported) {
-        if (message.actionResult == null) {
-          _aiService.addHistoryMessage(message.role, message.content);
-        }
+        _aiService.addHistoryMessage(message.role, message.content);
       }
       setState(() {
         _messages.addAll(imported);
@@ -630,8 +437,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         enableDrag: true,
         overlayTitle: "Neutral Pip",
         overlayContent: _isLoading
-            ? "Performing task..."
-            : "Floating Assistant",
+            ? "Working..."
+            : "Trading Assistant",
         flag: OverlayFlag.focusPointer,
         alignment: OverlayAlignment.centerRight,
         visibility: NotificationVisibility.visibilitySecret,
@@ -679,14 +486,28 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             const TradingAvatar(size: 32),
             const SizedBox(width: AppTokens.spaceSm),
-            Text(
-              'Neutral Pip',
-              style: AppFonts.heading(
-                size: 17,
-                weight: FontWeight.w700,
-                letterSpacing: -0.3,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Neutral Pip',
+                  style: AppFonts.heading(
+                    size: 17,
+                    weight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                Text(
+                  'AI Trading Co-Pilot',
+                  style: AppFonts.body(
+                    size: 10,
+                    weight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                    color: AppColors.amber,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -719,15 +540,11 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 MaterialPageRoute(
                   builder: (_) => SettingsScreen(
                     aiService: _aiService,
-                    shizukuService: _actionHandler.shizuku,
-                    screenAutomationService: _actionHandler.screenAutomation,
                     telegramService: _telegramService,
                     tradingApiService: _tradingApiService,
-                    tradingModeEnabled: _tradingModeEnabled,
                   ),
                 ),
               );
-              await _actionHandler.shizuku.checkAvailability();
               if (mounted) setState(() {});
             },
           ),
@@ -748,20 +565,14 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           Column(
             children: [
-              // Top-level mode selector (Phone Control / Trading Mode)
-              _buildTradingModeSelector(isDark),
+              // Persistent trust badge
+              _buildTradingModeBadge(isDark),
 
-              // Persistent safety badge while Trading Mode is active
-              if (_tradingModeEnabled) _buildTradingModeBadge(isDark),
-
-              // Trading quick actions (Trading Mode only)
-              if (_tradingModeEnabled) _buildTradingActionBar(),
-
-              // Pill selector switcher
-              _buildModeSelector(isDark),
+              // Trading quick actions
+              _buildTradingActionBar(),
 
               // API key warning banner
-              if (!_aiService.isConfigured)
+              if (!_aiService.isConfigured && !_tradingApiService.isConfigured)
                 Container(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -787,7 +598,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(
-                          'API not configured. Tap Settings to add details.',
+                          'No AI model configured. Tap Settings to add details.',
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
@@ -801,12 +612,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             MaterialPageRoute(
                               builder: (_) => SettingsScreen(
                                 aiService: _aiService,
-                                shizukuService: _actionHandler.shizuku,
-                                screenAutomationService:
-                                    _actionHandler.screenAutomation,
                                 telegramService: _telegramService,
                                 tradingApiService: _tradingApiService,
-                                tradingModeEnabled: _tradingModeEnabled,
                               ),
                             ),
                           );
@@ -853,7 +660,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        'Thinking...',
+                        'Analyzing...',
                         style: AppFonts.body(
                           size: 12,
                           weight: FontWeight.w500,
@@ -865,7 +672,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(width: 8),
                       TextButton.icon(
                         onPressed: () {
-                          _actionHandler.cancelTask();
                           setState(() {
                             _isLoading = false;
                           });
@@ -934,7 +740,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Row(
               children: [
                 Icon(
-                  Icons.smart_toy_rounded,
+                  Icons.candlestick_chart_rounded,
                   color: Theme.of(context).primaryColor,
                   size: 26,
                 ),
@@ -1122,25 +928,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           const Divider(indent: 16, endIndent: 16, height: 20),
 
-          // Section TASKS & SETTINGS
-          ListTile(
-            horizontalTitleGap: 8,
-            leading: Icon(
-              Icons.history_rounded,
-              color: isDark
-                  ? AppColors.textSecondaryDark
-                  : AppColors.textSecondaryLight,
-              size: 20,
-            ),
-            title: Text('Task History', style: textStyle),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const TaskHistoryScreen()),
-              );
-            },
-          ),
           ListTile(
             horizontalTitleGap: 8,
             leading: Icon(
@@ -1158,11 +945,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 MaterialPageRoute(
                   builder: (_) => SettingsScreen(
                     aiService: _aiService,
-                    shizukuService: _actionHandler.shizuku,
-                    screenAutomationService: _actionHandler.screenAutomation,
                     telegramService: _telegramService,
                     tradingApiService: _tradingApiService,
-                    tradingModeEnabled: _tradingModeEnabled,
                   ),
                 ),
               );
@@ -1225,114 +1009,13 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildModeSelector(bool isDark) {
-    final activeBg = Theme.of(context).colorScheme.surfaceContainerHighest;
-
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 12),
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: activeBg,
-          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
-          border: Border.all(
-            color: Theme.of(
-              context,
-            ).colorScheme.onSurface.withValues(alpha: 0.06),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildModeButton(
-              'chat',
-              'Chat',
-              Icons.chat_bubble_outline_rounded,
-              isDark,
-            ),
-            _buildModeButton(
-              'agent',
-              'Agent',
-              Icons.smart_toy_outlined,
-              isDark,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeButton(
-    String modeId,
-    String label,
-    IconData icon,
-    bool isDark,
-  ) {
-    final isSelected = _mode == modeId;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _mode = modeId;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Colors.transparent,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.20),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color: isSelected
-                  ? AppColors.onAmber
-                  : (isDark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: AppFonts.body(
-                size: 13,
-                weight: FontWeight.w700,
-                color: isSelected
-                    ? AppColors.onAmber
-                    : (isDark
-                          ? AppColors.textSecondaryDark
-                          : AppColors.textSecondaryLight),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildTradingModeBadge(bool isDark) {
     // TRADING MODE: never add tap-based execution here.
-    // Persistent trust/safety indicator: trades execute via the secure
-    // backend API, never through on-screen automation.
+    // Persistent trust/safety indicator: all trading analysis and execution
+    // goes through the secure backend API, never on-screen automation.
     return Center(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color:
@@ -1358,7 +1041,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                'Execution via secure API — no on-screen automation used for trades.',
+                'Secure API execution — trades are never automated on-device.',
                 style: AppFonts.body(
                   size: 11,
                   weight: FontWeight.w600,
@@ -1375,8 +1058,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// TRADING MODE: never add tap-based execution here.
-  /// Quick shortcuts only open analysis UI or trigger chart capture;
-  /// execution always happens through the secure backend API.
+  /// Quick shortcuts only open analysis UI or chart inputs; execution always
+  /// happens through the secure backend API.
   Widget _buildTradingActionBar() {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
@@ -1390,15 +1073,15 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           _buildActionTile(
             scheme,
-            Icons.screenshot_monitor_outlined,
-            'Capture Chart',
-            () => _captureChartScreenshot(),
-          ),
-          _buildActionTile(
-            scheme,
             Icons.link_rounded,
             'Chart URL',
             () => _promptChartUrl(),
+          ),
+          _buildActionTile(
+            scheme,
+            Icons.attach_file_rounded,
+            'Attach',
+            () => _showAttachmentPicker(),
           ),
           _buildActionTile(
             scheme,
@@ -1478,153 +1161,25 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  /// TRADING MODE: never add tap-based execution here.
-  /// Mode selection only changes the execution path; it never performs
-  /// device actions itself.
-  Widget _buildTradingModeSelector(bool isDark) {
-    final activeBg = Theme.of(context).colorScheme.surfaceContainerHighest;
-
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.only(top: 12),
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: activeBg,
-          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
-          border: Border.all(
-            color: Theme.of(
-              context,
-            ).colorScheme.onSurface.withValues(alpha: 0.06),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildTradingModeButton(
-              false,
-              'Phone Control',
-              Icons.phone_android_rounded,
-              isDark,
-            ),
-            _buildTradingModeButton(
-              true,
-              'Trading Mode',
-              Icons.trending_up_rounded,
-              isDark,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// TRADING MODE: never add tap-based execution here.
-  /// Button selection only changes the execution path; it never performs
-  /// device actions itself.
-  Widget _buildTradingModeButton(
-    bool tradingMode,
-    String label,
-    IconData icon,
-    bool isDark,
-  ) {
-    final isSelected = _tradingModeEnabled == tradingMode;
-
-    return GestureDetector(
-      onTap: () => _setTradingMode(tradingMode),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Colors.transparent,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.20),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color: isSelected
-                  ? AppColors.onAmber
-                  : (isDark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: AppFonts.body(
-                size: 13,
-                weight: FontWeight.w700,
-                color: isSelected
-                    ? AppColors.onAmber
-                    : (isDark
-                          ? AppColors.textSecondaryDark
-                          : AppColors.textSecondaryLight),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _setTradingMode(bool enabled) async {
-    // TRADING MODE: never add tap-based execution here.
-    // This toggle only selects the execution path (secure backend API vs
-    // on-screen automation); it never triggers device actions itself.
-    setState(() {
-      _tradingModeEnabled = enabled;
-    });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('trading_mode_enabled', enabled);
-  }
-
   Widget _buildEmptyState(bool isDark) {
     final time = DateTime.now();
     String timeGreeting = 'Hello';
     if (time.hour >= 5 && time.hour < 12) {
-      timeGreeting = 'Hello, good morning.';
+      timeGreeting = 'Good morning.';
     } else if (time.hour >= 12 && time.hour < 17) {
-      timeGreeting = 'Hello, good afternoon.';
+      timeGreeting = 'Good afternoon.';
     } else if (time.hour >= 17 && time.hour < 22) {
-      timeGreeting = 'Hello, good evening.';
+      timeGreeting = 'Good evening.';
     } else {
       timeGreeting = 'Hello.';
     }
 
-    final suggestions = _tradingModeEnabled
-        ? [
-            'Analyze BTC/USD on the 15m chart',
-            'What is my current risk exposure?',
-            'Show my latest journal entries',
-            'Explain this chart pattern',
-          ]
-        : _mode == 'chat'
-        ? [
-            'Write a professional email',
-            'Explain quantum computing simply',
-            'Brainstorm mobile app ideas',
-            'Write a poem about robots',
-          ]
-        : [
-            'Open YouTube and search for cats',
-            'Call Mom',
-            'Set volume to 80%',
-            'What\'s on my screen?',
-          ];
+    const suggestions = [
+      'Analyze BTC/USD on the 15m chart',
+      'What is my current risk exposure?',
+      'Explain this chart pattern',
+      'Give me a market briefing',
+    ];
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -1652,7 +1207,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'How can I help you?',
+                    'How can I help you trade?',
                     style: AppFonts.heading(
                       size: 30,
                       weight: FontWeight.w600,
@@ -1664,41 +1219,40 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            if (_tradingModeEnabled) ...[
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(AppTokens.spaceLg),
-                decoration: BoxDecoration(
-                  color: AppColors.amber.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-                  border: Border.all(
-                    color: AppColors.amber.withValues(alpha: 0.35),
-                    width: AppTokens.borderWidth,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.candlestick_chart_rounded,
-                      color: AppColors.amber,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Drop a chart screenshot or paste a TradingView URL '
-                        'to get an AI signal read.',
-                        style: AppFonts.body(
-                          size: 13,
-                          height: 1.4,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                  ],
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(AppTokens.spaceLg),
+              decoration: BoxDecoration(
+                color: AppColors.amber.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+                border: Border.all(
+                  color: AppColors.amber.withValues(alpha: 0.35),
+                  width: AppTokens.borderWidth,
                 ),
               ),
-            ],
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.candlestick_chart_rounded,
+                    color: AppColors.amber,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Attach a chart screenshot or paste a TradingView URL '
+                      'for an AI signal read. Use the mic to speak your '
+                      'question.',
+                      style: AppFonts.body(
+                        size: 13,
+                        height: 1.4,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 48),
             Align(
               alignment: Alignment.centerLeft,
@@ -1818,12 +1372,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: () => Navigator.pop(context, AttachmentSource.file),
             ),
             ListTile(
-              leading: const Icon(Icons.screenshot_monitor_outlined),
-              title: const Text('Capture Chart'),
-              subtitle: const Text('Screenshot the current chart on screen'),
-              onTap: () => Navigator.pop(context, AttachmentSource.screenshot),
-            ),
-            ListTile(
               leading: const Icon(Icons.link_rounded),
               title: const Text('Chart URL'),
               subtitle: const Text('Paste a public TradingView chart URL'),
@@ -1844,36 +1392,10 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case AttachmentSource.file:
         await _pickFile();
         break;
-      case AttachmentSource.screenshot:
-        await _captureChartScreenshot();
-        break;
       case AttachmentSource.chartUrl:
         await _promptChartUrl();
         break;
     }
-  }
-
-  Future<void> _captureChartScreenshot() async {
-    // TRADING MODE: never add tap-based execution here.
-    // Capture only reads the current screen (native screenshot); it never
-    // performs taps, swipes, or any other device action.
-    final attachment = await _actionHandler.screenAutomation
-        .captureChartScreenshot();
-    if (!mounted) return;
-    if (attachment == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not capture chart. Requires Android 11+ and the '
-            'accessibility service to be active.',
-          ),
-        ),
-      );
-      return;
-    }
-    setState(() {
-      _pendingAttachments.add(attachment);
-    });
   }
 
   Future<void> _promptChartUrl() async {
@@ -1989,8 +1511,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Pending attachments (Trading Mode only)
-          if (_tradingModeEnabled && _pendingAttachments.isNotEmpty)
+          // Pending attachments
+          if (_pendingAttachments.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Wrap(
@@ -2017,47 +1539,45 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           Row(
             children: [
-              // Glowing Voice Mic button (hidden in Trading Mode - voice
-              // commands would route to the trading API while the mic
-              // drives the Phone Control agent flow).
-              if (!_tradingModeEnabled)
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _isListening ? Colors.redAccent : chipColor,
-                    border: Border.all(
-                      color: _isListening
-                          ? Colors.redAccent
-                          : scheme.onSurface.withValues(alpha: 0.08),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(
-                          alpha: isDark ? 0.2 : 0.03,
-                        ),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+              // Glowing Voice Mic button — voice chat is available in
+              // trading mode: spoken questions go to the trading assistant.
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _isListening ? Colors.redAccent : chipColor,
+                  border: Border.all(
+                    color: _isListening
+                        ? Colors.redAccent
+                        : scheme.onSurface.withValues(alpha: 0.08),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.2 : 0.03,
                       ),
-                      if (_isListening)
-                        BoxShadow(
-                          color: Colors.redAccent.withValues(alpha: 0.4),
-                          blurRadius: 12,
-                          spreadRadius: 2,
-                        ),
-                    ],
-                  ),
-                  child: IconButton(
-                    icon: Icon(
-                      _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                      color: _isListening
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.primary,
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
-                    onPressed: _isLoading ? null : _toggleVoice,
-                  ),
+                    if (_isListening)
+                      BoxShadow(
+                        color: Colors.redAccent.withValues(alpha: 0.4),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                  ],
                 ),
+                child: IconButton(
+                  icon: Icon(
+                    _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                    color: _isListening
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                  onPressed: _isLoading ? null : _toggleVoice,
+                ),
+              ),
               const SizedBox(width: 10),
 
               // Custom Text input container
@@ -2082,13 +1602,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   child: Row(
                     children: [
-                      if (_tradingModeEnabled)
-                        IconButton(
-                          icon: const Icon(Icons.attach_file_rounded, size: 20),
-                          color: Theme.of(context).colorScheme.primary,
-                          tooltip: 'Attach chart image or file',
-                          onPressed: _isLoading ? null : _showAttachmentPicker,
-                        ),
+                      IconButton(
+                        icon: const Icon(Icons.attach_file_rounded, size: 20),
+                        color: Theme.of(context).colorScheme.primary,
+                        tooltip: 'Attach chart image or file',
+                        onPressed: _isLoading ? null : _showAttachmentPicker,
+                      ),
                       Expanded(
                         child: TextField(
                           controller: _textController,
@@ -2096,7 +1615,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           decoration: InputDecoration(
                             hintText: _isListening
                                 ? 'Listening...'
-                                : 'Type a command...',
+                                : 'Ask about markets, charts, or risk...',
                             hintStyle: AppFonts.body(
                               size: 13,
                               color: isDark
