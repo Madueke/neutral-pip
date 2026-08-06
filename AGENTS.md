@@ -12,11 +12,9 @@ Neutral Pip is an Android AI agent ("AI trading co-pilot") built with Flutter. I
 flutter pub get                 # resolve deps (uses local_plugins override)
 flutter test                    # CI runs this; only test/ai_service_test.dart exists
 flutter analyze                 # flutter_lints (analysis_options.yaml includes flutter_lints/flutter.yaml)
-flutter build apk --release     # universal APK → build/app/outputs/flutter-apk/app-release.apk
-flutter build apk --release --split-per-abi  # arm64-v8a / armeabi-v7a / x86_64 APKs
 ```
 
-CI (`.github/workflows/android-release.yml`) runs `flutter pub get` → `flutter test` → universal APK → split-per-abi APKs, then uploads `dist/*`. Triggered by pushing a `v*` tag or manual dispatch. No other deploy tooling exists.
+**Never run `flutter build` on this machine** — the EC2 box does not have enough RAM for Flutter/Gradle builds. All APK builds happen on Codemagic (pushed to GitHub, Codemagic builds automatically). Workflow for any code change: make the edit → `flutter analyze` only → commit → push to GitHub. Kill any local build jobs if one is accidentally started.
 
 ## Architecture / control flow
 
