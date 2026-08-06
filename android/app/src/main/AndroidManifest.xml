@@ -47,7 +47,8 @@
     <application
         android:label="Neutral Pip"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/splash_icon"
+        android:roundIcon="@mipmap/splash_icon">
 
         <activity
             android:name=".MainActivity"
