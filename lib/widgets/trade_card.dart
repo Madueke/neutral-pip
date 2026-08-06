@@ -4,11 +4,21 @@ import '../models/trade_signal.dart';
 
 /// Premium signal card: pair, bias, entry/SL/TP, risk, and an explained
 /// confidence meter. Confidence is never shown as a bare percentage.
+///
+/// If [liveQuote] is provided, a live price badge is shown next to the
+/// pair/timeframe and the entry level shows the live delta (how far the
+/// current price is from the signal entry).
 class TradeCard extends StatelessWidget {
   final TradeSignal signal;
   final VoidCallback? onTap;
+  final Map<String, dynamic>? liveQuote;
 
-  const TradeCard({super.key, required this.signal, this.onTap});
+  const TradeCard({
+    super.key,
+    required this.signal,
+    this.onTap,
+    this.liveQuote,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +29,23 @@ class TradeCard extends StatelessWidget {
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
     final muted = isDark ? AppColors.textMutedDark : AppColors.textMutedLight;
+
+    // Live quote enrichment (optional): show current market price and delta
+    // from signal entry.
+    final quote = liveQuote;
+    final hasLive = quote != null && quote['status'] == 'ok';
+    final livePrice = hasLive
+        ? (quote['last_close'] as num?)?.toDouble()
+        : null;
+    final liveChange = hasLive
+        ? (quote['change_percent'] as num?)?.toDouble()
+        : null;
+    final liveDelta = (livePrice != null && signal.entry != 0)
+        ? ((livePrice - signal.entry) / signal.entry * 100)
+        : null;
+    final liveDeltaColor = liveDelta != null
+        ? (liveDelta >= 0 ? AppColors.bull : AppColors.bear)
+        : null;
 
     return Material(
       color: Colors.transparent,
@@ -47,6 +74,14 @@ class TradeCard extends StatelessWidget {
                   ),
                   const SizedBox(width: AppTokens.spaceSm),
                   _Tag(label: signal.timeframe, color: secondary),
+                  if (hasLive) ...[
+                    const SizedBox(width: AppTokens.spaceSm),
+                    _LivePriceBadge(
+                      price: livePrice!,
+                      changePercent: liveChange,
+                      deltaFromEntry: liveDelta,
+                    ),
+                  ],
                   const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -90,6 +125,7 @@ class TradeCard extends StatelessWidget {
                     label: 'ENTRY',
                     value: _fmt(signal.entry),
                     color: Theme.of(context).colorScheme.onSurface,
+                    liveDelta: liveDelta,
                   ),
                   _Level(
                     label: 'STOP LOSS',
@@ -212,10 +248,12 @@ class _Level extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final double? liveDelta;
   const _Level({
     required this.label,
     required this.value,
     required this.color,
+    this.liveDelta,
   });
 
   @override
@@ -242,6 +280,17 @@ class _Level extends StatelessWidget {
               letterSpacing: -0.2,
             ),
           ),
+          if (liveDelta != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              '${liveDelta! >= 0 ? '+' : ''}${liveDelta!.toStringAsFixed(2)}% from entry',
+              style: AppFonts.body(
+                size: AppTokens.fontSizeTiny,
+                weight: FontWeight.w700,
+                color: liveDelta! >= 0 ? AppColors.bull : AppColors.bear,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -351,5 +400,93 @@ class _FactorRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Small badge showing the live market price and 24h change next to the
+/// signal pair/timeframe. Includes a delta indicator showing how far the
+/// live price is from the signal's entry price.
+class _LivePriceBadge extends StatelessWidget {
+  final double price;
+  final double? changePercent;
+  final double? deltaFromEntry;
+  const _LivePriceBadge({
+    required this.price,
+    this.changePercent,
+    this.deltaFromEntry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    final up = (changePercent ?? 0) >= 0;
+    final changeColor = up ? AppColors.bull : AppColors.bear;
+    final deltaUp = (deltaFromEntry ?? 0) >= 0;
+    final deltaColor = deltaUp ? AppColors.bull : AppColors.bear;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: secondary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppTokens.radiusChip),
+        border: Border.all(color: secondary.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.circle,
+            size: 6,
+            color: changeColor,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _fmt(price),
+            style: TextStyle(
+              fontSize: AppTokens.captionSize,
+              fontWeight: FontWeight.w700,
+              color: secondary,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '${changePercent != null ? (changePercent! >= 0 ? '+' : '') : ''}'
+            '${changePercent?.toStringAsFixed(2) ?? '--'}%',
+            style: TextStyle(
+              fontSize: AppTokens.captionSize,
+              fontWeight: FontWeight.w700,
+              color: changeColor,
+            ),
+          ),
+          if (deltaFromEntry != null) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: deltaColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(AppTokens.radiusPill),
+              ),
+              child: Text(
+                '${deltaFromEntry! >= 0 ? '+' : ''}'
+                '${deltaFromEntry!.toStringAsFixed(2)}% from entry',
+                style: TextStyle(
+                  fontSize: AppTokens.fontSizeTiny - 1,
+                  fontWeight: FontWeight.w700,
+                  color: deltaColor,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _fmt(double v) {
+    return v == v.roundToDouble()
+        ? v.toStringAsFixed(0)
+        : v.toStringAsFixed(v.abs() < 1000 ? 1 : 0);
   }
 }

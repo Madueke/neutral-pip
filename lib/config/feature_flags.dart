@@ -6,8 +6,7 @@ class FeatureFlags {
   static const bool floatingOverlayEnabled = false;
 
   // Connect Trading Accounts: the backend endpoints (POST /connect-account,
-  // GET /account-status, POST /disconnect-account) do not exist yet. While
-  // this is true the UI runs against in-app mock responses so the flow is
-  // testable. Flip to false once the hosted backend is live.
-  static const bool mockTradingAccountBackend = true;
+  // GET /account-status, POST /disconnect-account) are live and auth-gated
+  // (Bearer session token). Mock responses are no longer used.
+  static const bool mockTradingAccountBackend = false;
 }

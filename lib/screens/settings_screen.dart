@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import '../services/ai_service.dart';
+import '../services/auth_service.dart';
 import '../widgets/logo_loader.dart';
+import 'auth_gate.dart';
 import '../services/telegram_service.dart';
 import '../services/trading_api_service.dart';
 import 'connect_accounts_screen.dart';
@@ -269,6 +272,54 @@ class _SettingsScreenState extends State<SettingsScreen>
       maxTokens: int.tryParse(_maxTokensController.text) ?? 1024,
       useScreenCompression: _useScreenCompression,
       useSystemPrompt: _useSystemPrompt,
+    );
+  }
+
+  /// Set or change the fast re-entry PIN (local to this device only).
+  Future<void> _setPin() async {
+    final newPin = await showDialog<String>(
+      context: context,
+      builder: (ctx) => const _PinDialog(),
+    );
+    if (newPin == null) return;
+    await AuthService.instance.setPin(newPin);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('PIN saved for fast re-entry.')),
+    );
+    setState(() {});
+  }
+
+  /// Revoke the session server-side and return to the auth gate.
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your session will be revoked on the backend. You will need your '
+          'passkey to sign back in.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.bear),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await AuthService.instance.logout();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthGate()),
+      (route) => false,
     );
   }
 
@@ -844,6 +895,44 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
 
+          // 5b. Account Card (Trading Mode auth)
+          if (AuthService.instance.isBackendConfigured) ...[
+            _sectionLabel('Account'),
+            _buildSettingsCard(
+              icon: Icons.person_outline_rounded,
+              title: 'Signed in as ${AuthService.instance.displayName ?? ''}',
+              subtitle: AuthService.instance.email ?? '',
+              isDark: isDark,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.password_rounded,
+                      color: AppColors.amber),
+                  title: const Text('Set / Change PIN'),
+                  subtitle: const Text(
+                    '4-6 digit fast re-entry PIN for this device only',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _setPin,
+                ),
+                const Divider(
+                  height: AppTokens.spaceXl,
+                  color: AppColors.borderDark,
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.logout_rounded,
+                      color: AppColors.bear),
+                  title: const Text('Sign out'),
+                  subtitle: const Text('Revoke this session on all devices',
+                      style: TextStyle(color: AppColors.bear)),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _signOut,
+                ),
+              ],
+            ),
+          ],
+
           // 5. Telegram Remote Access Card
           _sectionLabel('Connectivity'),
           _buildSettingsCard(
@@ -1148,6 +1237,91 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Set/change PIN dialog (4-6 digits, entered twice).
+class _PinDialog extends StatefulWidget {
+  const _PinDialog();
+
+  @override
+  State<_PinDialog> createState() => _PinDialogState();
+}
+
+class _PinDialogState extends State<_PinDialog> {
+  final _pinController = TextEditingController();
+  final _confirmController = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _pinController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final pin = _pinController.text;
+    final confirm = _confirmController.text;
+    if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) {
+      setState(() => _error = 'PIN must be 4 to 6 digits.');
+      return;
+    }
+    if (pin != confirm) {
+      setState(() => _error = 'PINs do not match.');
+      return;
+    }
+    Navigator.of(context).pop(pin);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      backgroundColor: AppColors.surfaceDark,
+      title: const Text('Set a re-entry PIN'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _pinController,
+            autofocus: true,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: 'New PIN (4-6 digits)',
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+          TextField(
+            controller: _confirmController,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(
+              labelText: 'Confirm PIN',
+              counterText: '',
+              errorText: _error,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          style: FilledButton.styleFrom(backgroundColor: scheme.primary),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

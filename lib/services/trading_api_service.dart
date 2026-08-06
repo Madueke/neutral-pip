@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
-import '../config/feature_flags.dart';
+import 'auth_service.dart';
 import '../models/chat_message.dart';
 
 /// Standalone client for the Trading Mode backend.
@@ -27,13 +27,23 @@ class TradingApiService {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _tradingBackendUrl = prefs.getString('trading_backend_url') ?? '';
+    // Keep the auth service in sync (session state + backend URL) so every
+    // request below can attach the Bearer token.
+    await AuthService.instance.init();
   }
 
   Future<void> saveSettings({required String tradingBackendUrl}) async {
     _tradingBackendUrl = tradingBackendUrl;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('trading_backend_url', tradingBackendUrl);
+    await AuthService.instance.reloadBackendUrl();
   }
+
+  /// Headers for authenticated requests: the session token from secure
+  /// storage as `Authorization: Bearer` (added only when a session exists).
+  /// The backend resolves the token to the user server-side; the app never
+  /// sends a raw user_id.
+  Map<String, String> get _authHeaders => AuthService.instance.authHeaders;
 
   /// Run the full backend analysis pipeline for a symbol/timeframe.
   /// Backend endpoint: POST /analyze (strategy + backtest + live chart +
@@ -57,9 +67,8 @@ class TradingApiService {
       final response = await http
           .post(
             Uri.parse('$tradingBackendUrl/analyze'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _authHeaders,
             body: jsonEncode({
-              'user_id': await getUserId(),
               'symbol': symbol,
               'timeframe': timeframe,
             }),
@@ -220,9 +229,8 @@ class TradingApiService {
     try {
       final response = await http
           .get(
-            Uri.parse('$tradingBackendUrl/journal').replace(
-              queryParameters: {'user_id': await getUserId()},
-            ),
+            Uri.parse('$tradingBackendUrl/journal'),
+            headers: _authHeaders,
           )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
@@ -248,9 +256,8 @@ class TradingApiService {
     try {
       final response = await http
           .get(
-            Uri.parse('$tradingBackendUrl/risk-status').replace(
-              queryParameters: {'user_id': await getUserId()},
-            ),
+            Uri.parse('$tradingBackendUrl/risk-status'),
+            headers: _authHeaders,
           )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
@@ -380,9 +387,6 @@ class TradingApiService {
   // is persisted client-side beyond what this screen needs to render.
   // ---------------------------------------------------------------------------
 
-  /// Stable client-generated user id (also used by account endpoints).
-  Future<String> getUserId() => _userId();
-
   /// Fetch the current strategy profile + latest backtest result.
   /// Returns { status: 'ok', profile, version, backtest } when found,
   /// { status: 'not_found' } when the user has no profile yet, and
@@ -396,9 +400,8 @@ class TradingApiService {
     try {
       final response = await http
           .get(
-            Uri.parse('$tradingBackendUrl/strategy').replace(
-              queryParameters: {'user_id': await getUserId()},
-            ),
+            Uri.parse('$tradingBackendUrl/strategy'),
+            headers: _authHeaders,
           )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
@@ -426,8 +429,8 @@ class TradingApiService {
       final response = await http
           .post(
             Uri.parse('$tradingBackendUrl/strategy'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'user_id': await getUserId(), ...profile}),
+            headers: _authHeaders,
+            body: jsonEncode({...profile}),
           )
           .timeout(const Duration(minutes: 2));
       final data = jsonDecode(response.body);
@@ -456,8 +459,7 @@ class TradingApiService {
       final response = await http
           .post(
             Uri.parse('$tradingBackendUrl/backtest'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'user_id': await getUserId()}),
+            headers: _authHeaders,
           )
           .timeout(const Duration(minutes: 2));
       final data = jsonDecode(response.body);
@@ -481,9 +483,8 @@ class TradingApiService {
     try {
       final response = await http
           .get(
-            Uri.parse('$tradingBackendUrl/settings').replace(
-              queryParameters: {'user_id': await getUserId()},
-            ),
+            Uri.parse('$tradingBackendUrl/settings'),
+            headers: _authHeaders,
           )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
@@ -510,11 +511,8 @@ class TradingApiService {
       final response = await http
           .patch(
             Uri.parse('$tradingBackendUrl/settings'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'user_id': await getUserId(),
-              'auto_execute': autoExecute,
-            }),
+            headers: _authHeaders,
+            body: jsonEncode({'auto_execute': autoExecute}),
           )
           .timeout(const Duration(seconds: 15));
       final data = jsonDecode(response.body);
@@ -535,92 +533,67 @@ class TradingApiService {
   // ---------------------------------------------------------------------------
   // Connect Trading Accounts
   //
-  // Backend contract (endpoints not implemented yet, see
-  // FeatureFlags.mockTradingAccountBackend):
-  //   POST /connect-account      body: { user_id, account: 'tradingview'|'mt5',
+  // Backend contract (live, see /home/ubuntu/meridian-backend):
+  //   POST /connect-account      body: { account: 'tradingview'|'mt5',
   //                                     ...account-specific fields }
   //                              → 200 { status: 'ok', session: { token, user_id } }
-  //   GET  /account-status       query: user_id
-  //                              → 200 { user_id, accounts: { <key>: { status,
-  //                                     detail? } } }   status in
+  //   GET  /account-status       (Bearer) → 200 { user_id, accounts: { <key>: {
+  //                                     status, detail? } } }   status in
   //                                     'connected'|'not_connected'|'error'
-  //   POST /disconnect-account   body: { user_id, account: <key> }
+  //   POST /disconnect-account   body: { account: <key> }
   //                              → 200 { status: 'ok', disconnected: true }
   //
-  // Client-side we persist ONLY the returned session token (per account) and
-  // a stable client-generated user_id. Sensitive MT5 credentials are sent to
-  // the backend once and are never stored locally.
+  // Identity comes from the Authorization: Bearer session token — the app
+  // never sends a raw user_id. The `session.token` in the connect response
+  // is a legacy per-account informational token, not the auth session.
+  // Sensitive MT5 credentials are sent to the backend once and are never
+  // stored locally (fields are cleared by the UI after success).
   //
   // TRADING MODE: never add tap-based execution here. Account connection is
   // a backend-only operation - the app never touches a broker terminal.
   // ---------------------------------------------------------------------------
 
-  /// Stable client-generated user id, persisted in SharedPreferences. Used
-  /// as `user_id` on every account endpoint until the backend ships auth.
-  Future<String> _userId() async {
-    final prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString('trading_user_id');
-    if (id == null || id.isEmpty) {
-      id =
-          'u_${DateTime.now().millisecondsSinceEpoch}_'
-          '${_randomSuffix()}';
-      await prefs.setString('trading_user_id', id);
-    }
-    return id;
-  }
+  /// Resolved user id from the active auth session (informational; the
+  /// backend derives identity from the Bearer token, not this value).
+  Future<String?> getUserId() async => AuthService.instance.userId;
 
-  String _randomSuffix() {
-    final s = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    return s.substring(s.length - 6);
-  }
-
-  /// SharedPreferences keys holding the per-account session token returned by
-  /// the backend. These are the ONLY thing persisted after a connect; the
-  /// raw credentials never touch disk.
+  /// SharedPreferences keys holding the legacy per-account session token
+  /// returned by the backend. These are the ONLY thing persisted after a
+  /// connect; the raw credentials never touch disk.
   static const String _tokenPrefKeyPrefix = 'trading_account_token_';
   static const String tradingViewAccountKey = 'tradingview';
   static const String mt5AccountKey = 'mt5';
 
   /// Connect the TradingView watchlist (no login): posts the selected
-  /// symbols and timeframes. Future backend endpoint: POST /connect-account.
+  /// symbols and timeframes. Backend endpoint: POST /connect-account.
   ///
   /// TRADING MODE: never add tap-based execution here.
   Future<Map<String, dynamic>> connectTradingView({
     required List<String> symbols,
     required List<String> timeframes,
   }) async {
-    final userId = await _userId();
     final body = {
-      'user_id': userId,
       'account': tradingViewAccountKey,
       'symbols': symbols,
       'timeframes': timeframes,
     };
 
-    final response = await _postAccount('/connect-account', body, userId);
+    final response = await _postAccount('/connect-account', body);
     if (response != null) {
       if (response['status'] == 'ok') {
         await _persistSession(tradingViewAccountKey, response);
       }
       return response;
     }
-
-    // TODO(mock): remove once the real backend ships. Mirrors the expected
-    // 200 response so the UI is testable end to end.
-    final mock = {
-      'status': 'ok',
-      'session': {
-        'token': 'mock-tv-${_randomSuffix()}',
-        'user_id': userId,
-      },
+    return {
+      'status': 'error',
+      'message': 'Trading backend not configured',
     };
-    await _persistSession(tradingViewAccountKey, mock);
-    return mock;
   }
 
   /// Connect a real MT5 account. Credentials are posted to the backend once
   /// and are never persisted client-side; only the returned session token is
-  /// kept. Future backend endpoint: POST /connect-account.
+  /// kept. Backend endpoint: POST /connect-account.
   ///
   /// TRADING MODE: never add tap-based execution here.
   Future<Map<String, dynamic>> connectMt5({
@@ -628,96 +601,80 @@ class TradingApiService {
     required String password,
     required String brokerServer,
   }) async {
-    final userId = await _userId();
     final body = {
-      'user_id': userId,
       'account': mt5AccountKey,
       'account_number': accountNumber.trim(),
       'password': password,
       'broker_server': brokerServer.trim(),
     };
 
-    final response = await _postAccount('/connect-account', body, userId);
+    final response = await _postAccount('/connect-account', body);
     if (response != null) {
       if (response['status'] == 'ok') {
         await _persistSession(mt5AccountKey, response);
       }
       return response;
     }
-
-    // TODO(mock): remove once the real backend ships.
-    final mock = {
-      'status': 'ok',
-      'session': {
-        'token': 'mock-mt5-${_randomSuffix()}',
-        'user_id': userId,
-      },
+    return {
+      'status': 'error',
+      'message': 'Trading backend not configured',
     };
-    await _persistSession(mt5AccountKey, mock);
-    return mock;
   }
 
-  /// Fetch connection status for every known account. Future backend
-  /// endpoint: GET /account-status?user_id=...
+  /// Fetch connection status for every known account. Backend endpoint:
+  /// GET /account-status (Bearer).
   ///
   /// TRADING MODE: never add tap-based execution here.
   Future<Map<String, dynamic>> getAccountStatus() async {
-    final userId = await _userId();
-
-    if (!FeatureFlags.mockTradingAccountBackend && isConfigured) {
-      try {
-        final uri = Uri.parse('$tradingBackendUrl/account-status').replace(
-          queryParameters: {'user_id': userId},
-        );
-        final response = await http
-            .get(uri, headers: {'Content-Type': 'application/json'})
-            .timeout(const Duration(seconds: 10));
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data is Map<String, dynamic>) return data;
-        }
-      } catch (_) {
-        // Fall through to the mock below so the screen still renders.
-      }
+    if (!isConfigured) {
+      return {
+        'accounts': {
+          tradingViewAccountKey: {'status': 'not_connected'},
+          mt5AccountKey: {'status': 'not_connected'},
+        },
+      };
     }
-
-    // TODO(mock): remove once the real backend ships. Derives a plausible
-    // status from the locally stored session tokens.
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/account-status'),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      if (response.statusCode == 401) {
+        return {
+          'auth_error': true,
+          'accounts': {
+            tradingViewAccountKey: {'status': 'not_connected'},
+            mt5AccountKey: {'status': 'not_connected'},
+          },
+        };
+      }
+    } catch (_) {
+      // Fall through to the not-connected defaults so the screen renders.
+    }
     return {
-      'user_id': userId,
       'accounts': {
-        tradingViewAccountKey: {
-          'status': prefs.getString(
-                    '$_tokenPrefKeyPrefix$tradingViewAccountKey',
-                  ) !=
-                  null
-              ? 'connected'
-              : 'not_connected',
-        },
-        mt5AccountKey: {
-          'status':
-              prefs.getString('$_tokenPrefKeyPrefix$mt5AccountKey') != null
-                  ? 'connected'
-                  : 'not_connected',
-        },
+        tradingViewAccountKey: {'status': 'not_connected'},
+        mt5AccountKey: {'status': 'not_connected'},
       },
     };
   }
 
-  /// Disconnect an account. Future backend endpoint:
-  /// POST /disconnect-account.
+  /// Disconnect an account. Backend endpoint: POST /disconnect-account.
   ///
   /// TRADING MODE: never add tap-based execution here.
   Future<Map<String, dynamic>> disconnectAccount(String accountKey) async {
-    final userId = await _userId();
     final body = {
-      'user_id': userId,
       'account': accountKey,
     };
 
-    final response = await _postAccount('/disconnect-account', body, userId);
-    // Clear the local session token regardless of mock/real outcome.
+    final response = await _postAccount('/disconnect-account', body);
+    // Clear the local per-account token regardless of outcome.
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_tokenPrefKeyPrefix$accountKey');
 
@@ -725,19 +682,18 @@ class TradingApiService {
     return {'status': 'ok', 'disconnected': true, 'account': accountKey};
   }
 
-  /// Shared POST for connect/disconnect; returns the decoded 200 body, or
-  /// null when the backend is mocked/unconfigured/unreachable.
+  /// Shared POST for connect/disconnect; returns the decoded 200 body, or a
+  /// structured error / null when the backend is unconfigured or unreachable.
   Future<Map<String, dynamic>?> _postAccount(
     String path,
     Map<String, dynamic> body,
-    String userId,
   ) async {
-    if (FeatureFlags.mockTradingAccountBackend || !isConfigured) return null;
+    if (!isConfigured) return null;
     try {
       final response = await http
           .post(
             Uri.parse('$tradingBackendUrl$path'),
-            headers: {'Content-Type': 'application/json'},
+            headers: _authHeaders,
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 15));
@@ -747,7 +703,10 @@ class TradingApiService {
       }
       return {
         'status': 'error',
-        'message': 'Backend returned HTTP ${response.statusCode}.',
+        'message':
+            response.statusCode == 401
+                ? 'Session expired. Sign in again.'
+                : 'Backend returned HTTP ${response.statusCode}.',
       };
     } catch (e) {
       return {

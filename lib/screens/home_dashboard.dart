@@ -42,8 +42,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
   // is configured the watchlist falls back to the curated static data.
   Timer? _quoteTimer;
   final Map<String, Map<String, dynamic>> _liveQuotes = {};
+  final Map<String, DateTime> _quoteTimestamps = {};
   bool _hasUnreadActivity = true;
   String _preferredTimeframe = 'H1';
+  static const Duration _staleThreshold = Duration(seconds: 30);
 
   static const Duration _quotePollInterval = Duration(seconds: 6);
 
@@ -136,7 +138,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final quote = await widget.tradingApiService.getQuote(item.symbol);
       if (!mounted) return;
       if (quote['status'] == 'ok') {
-        setState(() => _liveQuotes[item.symbol] = quote);
+        setState(() {
+          _liveQuotes[item.symbol] = quote;
+          _quoteTimestamps[item.symbol] = DateTime.now();
+        });
       }
     }
   }
@@ -169,8 +174,25 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  /// Open the live chart for the default symbol (first watchlist entry) on
-  /// the user's preferred timeframe, e.g. from the AppBar "Live chart" action.
+  /// Whether a symbol has a fresh live quote (not older than [_staleThreshold]).
+  bool _isQuoteFresh(String symbol) {
+    final ts = _quoteTimestamps[symbol];
+    if (ts == null) return false;
+    return DateTime.now().difference(ts) < _staleThreshold;
+  }
+
+  /// Get live quote for a symbol if fresh; null if missing or stale.
+  Map<String, dynamic>? _getFreshQuote(String symbol) {
+    final q = _liveQuotes[symbol];
+    if (q == null || q['status'] != 'ok') return null;
+    return _isQuoteFresh(symbol) ? q : null;
+  }
+  // Helper to map a signal pair (e.g., "XAU/USD") to the watchlist symbol
+  // key (e.g., "XAUUSD") for live quote lookup.
+  String _signalPairToSymbol(String pair) {
+    return pair.replaceAll('/', '').toUpperCase();
+  }
+
   Future<void> _openDefaultChart() async {
     final symbols = await loadWatchlistSymbols();
     final timeframe = await loadPreferredTimeframe();
@@ -346,6 +368,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         signal: signal,
                         onTap: () =>
                             widget.onQuickAction(HomeQuickAction.askAi),
+                        liveQuote: _getFreshQuote(
+                            _signalPairToSymbol(signal.pair)),
                       ),
                     ),
                   ),
@@ -661,24 +685,49 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildWatchlistTitle(Color secondary) {
-    final live = _liveQuotes.isNotEmpty;
+    final isConfigured = widget.tradingApiService.isConfigured;
+    final hasAnyFresh = _liveQuotes.keys.any(_isQuoteFresh);
+    final hasAnyStale = _liveQuotes.keys.any((s) => _liveQuotes[s] != null && !_isQuoteFresh(s));
+    String title;
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+    if (!isConfigured) {
+      title = 'Watchlist';
+      statusIcon = Icons.cloud_off_rounded;
+      statusColor = AppColors.textMutedDark;
+      statusText = 'Backend not configured';
+    } else if (hasAnyFresh) {
+      title = 'Live markets';
+      statusIcon = Icons.circle;
+      statusColor = AppColors.bull;
+      statusText = hasAnyStale ? 'Partial feed' : 'Updating live';
+    } else if (_liveQuotes.isNotEmpty) {
+      // Has quotes but all stale
+      title = 'Live markets';
+      statusIcon = Icons.access_time_rounded;
+      statusColor = AppColors.warning;
+      statusText = 'Feed stale — retrying...';
+    } else {
+      title = 'Live markets';
+      statusIcon = Icons.sync_rounded;
+      statusColor = AppColors.info;
+      statusText = 'Connecting...';
+    }
     return Row(
       children: [
         Expanded(
-          child: _buildSectionTitle(
-            live ? 'Live markets' : 'Watchlist',
-            secondary,
-          ),
+          child: _buildSectionTitle(title, secondary),
         ),
-        if (live) ...[
-          _PulseDot(),
-          const SizedBox(width: 6),
+        if (isConfigured) ...[
+          Icon(statusIcon, size: 10, color: statusColor),
+          const SizedBox(width: 4),
           Text(
-            'Updating live',
+            statusText,
             style: AppFonts.body(
               size: AppTokens.fontSizeTiny,
               weight: FontWeight.w700,
-              color: AppColors.bull,
+              color: statusColor,
             ),
           ),
         ],
@@ -687,97 +736,109 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildWatchlist(bool isDark) {
-    final border = isDark ? AppColors.borderDark : AppColors.borderLight;
-    final live = _liveQuotes.isNotEmpty;
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(color: border),
-        boxShadow: AppShadows.card,
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < _watchlist.length; i++)
-            if (i > 0)
-              Divider(height: 1, color: border.withValues(alpha: 0.6))
-            else
-              const SizedBox.shrink(),
-          for (final item in _watchlist)
-            _buildWatchRow(item, live, isDark),
-        ],
-      ),
-    );
-  }
+      final border = isDark ? AppColors.borderDark : AppColors.borderLight;
+      return Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+          border: Border.all(color: border),
+          boxShadow: AppShadows.card,
+        ),
+        child: Column(
+          children: [
+            for (var i = 0; i < _watchlist.length; i++)
+              if (i > 0)
+                Divider(height: 1, color: border.withValues(alpha: 0.6))
+              else
+                const SizedBox.shrink(),
+            for (final item in _watchlist)
+              _buildWatchRow(item, isDark),
+          ],
+        ),
+      );
+    }
 
-  /// One watchlist row. When the backend has delivered a live quote for the
-  /// symbol it renders the fresh price/change/candles with animated
-  /// transitions; otherwise the curated static snapshot is shown.
-  Widget _buildWatchRow(_WatchItem item, bool live, bool isDark) {
-    final quote = live ? _liveQuotes[item.symbol] : null;
-    final price = quote != null
-        ? ((quote['last_close'] as num?) ?? item.price).toDouble()
-        : item.price;
-    final change = quote != null
-        ? ((quote['change_percent'] as num?) ?? item.change).toDouble()
-        : item.change;
-    final spark = quote != null ? quote['spark'] : null;
-    final List<List<double>> candles =
-        spark is List && spark.isNotEmpty
-            ? spark
-                  .map(
-                    (c) => (c as List)
-                        .map((v) => (v as num).toDouble())
-                        .toList(),
-                  )
-                  .toList()
-            : item.candles;
-    final changeUp = change >= 0;
-    final changeColor = changeUp ? AppColors.bull : AppColors.bear;
-    final priceText = _fmtPrice(price);
+    /// One watchlist row. When the backend has delivered a fresh live quote
+    /// for the symbol it renders the fresh price/change/candles with animated
+    /// transitions; otherwise the curated static snapshot is shown with a
+    /// subtle stale indicator.
+    Widget _buildWatchRow(_WatchItem item, bool isDark) {
+      final quote = _getFreshQuote(item.symbol);
+      final hasStaleQuote = _liveQuotes[item.symbol] != null && quote == null;
+      final price = quote != null
+          ? ((quote['last_close'] as num?) ?? item.price).toDouble()
+          : item.price;
+      final change = quote != null
+          ? ((quote['change_percent'] as num?) ?? item.change).toDouble()
+          : item.change;
+      final spark = quote != null ? quote['spark'] : null;
+      final List<List<double>> candles =
+          spark is List && spark.isNotEmpty
+              ? spark
+                    .map(
+                      (c) => (c as List)
+                          .map((v) => (v as num).toDouble())
+                          .toList(),
+                    )
+                    .toList()
+              : item.candles;
+      final changeUp = change >= 0;
+      final changeColor = changeUp ? AppColors.bull : AppColors.bear;
+      final priceText = _fmtPrice(price);
 
-    // Tapping a row opens the live TradingView chart for that symbol.
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openChart(item),
-        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppTokens.spaceLg,
-            vertical: AppTokens.spaceMd,
-          ),
-          child: Row(
-        children: [
-          SizedBox(
-            width: 92,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      // Tapping a row opens the live TradingView chart for that symbol.
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _openChart(item),
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTokens.spaceLg,
+              vertical: AppTokens.spaceMd,
+            ),
+            child: Row(
               children: [
-                Text(
-                  item.pair,
-                  style: AppFonts.heading(
-                    size: 13,
-                    weight: FontWeight.w600,
+                SizedBox(
+                  width: 92,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.pair,
+                        style: AppFonts.heading(
+                          size: 13,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                      if (quote != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'LIVE',
+                          style: AppFonts.body(
+                            size: AppTokens.fontSizeTiny,
+                            weight: FontWeight.w700,
+                            color: AppColors.bull,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ] else if (hasStaleQuote) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'STALE',
+                          style: AppFonts.body(
+                            size: AppTokens.fontSizeTiny,
+                            weight: FontWeight.w700,
+                            color: AppColors.warning,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (live) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'LIVE',
-                    style: AppFonts.body(
-                      size: AppTokens.fontSizeTiny,
-                      weight: FontWeight.w700,
-                      color: AppColors.bull,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Expanded(
-            child: CandleSparkline(candles: candles, height: 34),
+                Expanded(
+                  child: CandleSparkline(candles: candles, height: 34),
           ),
           const SizedBox(width: AppTokens.spaceMd),
           SizedBox(

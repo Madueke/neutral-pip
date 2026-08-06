@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../config/feature_flags.dart';
 import '../config/theme.dart';
 import '../services/trading_api_service.dart';
 import '../widgets/logo_loader.dart';
@@ -17,12 +16,10 @@ import '../widgets/logo_loader.dart';
 ///    fields are cleared immediately after a successful response and are
 ///    never persisted locally — only the returned session token is stored.
 ///
-/// Status per account comes from GET /account-status?user_id=... on load;
-/// disconnects go through POST /disconnect-account.
-///
-/// While FeatureFlags.mockTradingAccountBackend is true the service returns
-/// simulated responses so this screen is fully testable before the hosted
-/// backend endpoints exist (a demo banner is shown in that case).
+/// Status per account comes from GET /account-status (Bearer session
+/// token) on load; disconnects go through POST /disconnect-account. Identity
+/// is resolved server-side from the session — the app never sends a raw
+/// user_id.
 ///
 /// TRADING MODE: never add tap-based execution here. Connecting an account
 /// is a backend-only operation — the app never interacts with a broker
@@ -72,8 +69,6 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
   bool _riskAcknowledged = false;
   bool _obscurePassword = true;
   bool _mt5Saving = false;
-
-  bool get _isMock => FeatureFlags.mockTradingAccountBackend;
 
   @override
   void initState() {
@@ -319,10 +314,6 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
                   AppTokens.spaceXxl,
                 ),
                 children: [
-                  if (_isMock) ...[
-                    _buildMockBanner(scheme),
-                    const SizedBox(height: AppTokens.spaceLg),
-                  ],
                   _buildStatusSection(scheme),
                   const SizedBox(height: AppTokens.spaceXl),
                   _buildTradingViewCard(scheme),
@@ -331,40 +322,6 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildMockBanner(ColorScheme scheme) {
-    return Container(
-      padding: const EdgeInsets.all(AppTokens.spaceMd),
-      decoration: BoxDecoration(
-        color: AppColors.amber.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(AppTokens.radiusControl),
-        border: Border.all(
-          color: AppColors.amber.withValues(alpha: 0.35),
-          width: AppTokens.borderWidth,
-        ),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.science_outlined,
-            color: AppColors.amber,
-            size: 18,
-          ),
-          const SizedBox(width: AppTokens.spaceSm),
-          Expanded(
-            child: Text(
-              'Demo mode: account endpoints are not live yet, so responses '
-              'are simulated on-device.',
-              style: AppFonts.body(
-                size: AppTokens.captionSize,
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

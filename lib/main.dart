@@ -4,7 +4,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'dart:developer';
 import 'config/feature_flags.dart';
 import 'config/theme.dart';
-import 'screens/app_shell.dart';
+import 'screens/auth_gate.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/splash_screen.dart';
 import 'overlay_main.dart';
@@ -93,7 +93,7 @@ class NeutralPipApp extends StatelessWidget {
           darkTheme: AppTheme.dark,
           home: SplashScreen(
             next: onboardingCompleted
-                ? const AppShell()
+                ? const AuthGate()
                 : const OnboardingScreen(),
           ),
         );

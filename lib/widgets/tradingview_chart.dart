@@ -93,7 +93,12 @@ String buildTradingViewChartHtml(String symbol, String timeframe) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden;
-                 background-color: #0B0F19; }
+                 position: relative; background-color: #0B0F19; }
+    /* Close the 100% height chain: the wrapper must size itself to the
+       viewport so the autosized widget fills it completely instead of
+       collapsing to its default block height. */
+    .tradingview-widget-container { position: relative; width: 100%; height: 100%; }
+    .tradingview-widget-container__widget { width: 100%; height: 100%; }
     #tradingview_widget { width: 100%; height: 100%; }
   </style>
 </head>

@@ -56,13 +56,41 @@ They remain because `overlay_main.dart` and the legacy dashboard still import th
 - Retries up to 4 times on chat; the 30-minute HTTP timeout is applied per request.
 - Requests always send `HTTP-Referer: https://github.com/neutralpip/neutral-pip` and `X-Title: Neutral Pip` headers (OpenRouter attribution).
 
+## Authentication & Session Model (Part 1)
+
+**Backend auth endpoints** (`/home/ubuntu/meridian-backend/routes/auth.js`):
+
+- `POST /auth/signup { email, display_name }` → 200 `{ user_id, display_name, email, session_token }` (409 on duplicate; 400 on invalid email). **Creates a session immediately** so the app can run the mandatory passkey registration ceremony right away.
+- `POST /auth/signin { email }` → 200 `{ user_id, display_name, has_passkey }` (404 if unknown). **Never issues a session** — only starts the passkey flow.
+- `POST /auth/passkey/register/begin` (Bearer) → WebAuthn creation options JSON (`challenge`, `rp`, `user.id` **base64url WITH padding** for Android Credential Manager, `pubKeyCredParams`, `authenticatorSelection`, `timeout`, `excludeCredentials`).
+- `POST /auth/passkey/register/complete` (Bearer) `{ public_key_credential }` → `{ status: 'ok', passkey_registered: true }`.
+- `POST /auth/passkey/verify/begin { user_id }` → WebAuthn request options (`challenge`, `rpId`, `timeout`, `allowCredentials`, `userVerification: 'preferred'`). 400 if no passkey registered.
+- `POST /auth/passkey/verify/complete { user_id, signed_challenge }` → 200 `{ user_id, display_name, email, session_token }`.
+- `POST /auth/logout { session_token }` → `{ status: 'ok' }`.
+- `GET /auth/session?session_token=...` → `{ valid, user_id, email, display_name, passkey_registered }` (valid:false if missing/expired; always 200).
+
+**Protected routes** (require `Authorization: Bearer <session_token>`): `/analyze`, `/journal`, `/risk-status`, `/execute-trade-signal`, `/strategy`, `/backtest`, `/settings`, `/connect-account`, `/account-status`, `/disconnect-account`. **Public**: `/auth/*`, `/chat`, `/quote`, `/chart`, `/health`.
+
+**Server-side session store** (`lib/auth.js`): `sessions` collection keyed by 32-byte hex token → `{ user_id, created_at, expires_at }` (30-day TTL). `challenges` collection holds one in-flight WebAuthn challenge per user (5-min TTL, peek+clear pattern so failed attempts don't burn the ceremony). Passkeys stored as `{ id, public_key (base64), counter, transports }`.
+
+**App-side auth service** (`lib/services/auth_service.dart`):
+
+- `FlutterSecureStorage` keys: `session_token`, `auth_user_id`, `auth_email`, `auth_display_name`, `pin_hash`, `pin_salt`. **Never SharedPreferences.**
+- `AuthService.instance.authHeaders` returns `{ 'Content-Type': 'application/json', 'Authorization': 'Bearer <token>' }` when a session exists — used by `TradingApiService` on every Trading Mode call. The app **never sends a raw user_id**.
+- On cold start: if backend configured → `GET /auth/session` to validate; if valid + PIN set → `PinLockScreen`; if valid, no PIN → `AppShell`; if invalid/missing → `AuthScreen`.
+- **Passkey flow**: Signup returns a session → `registerPasskey()` runs `begin` → `PasskeyAuthenticator().register()` → `complete`. Sign-in: `signIn(email)` → `verify/begin` → `PasskeyAuthenticator().authenticate()` → `verify/complete` → new session token.
+- **PIN** (local fast re-entry only, 4-6 digits): SHA-256(salt + pin) in secure storage. Verified against the existing session (which must still be valid per `GET /auth/session`). 5 failures → session cleared, fallback to `AuthScreen`. PIN never sent to backend.
+
+**Android passkey deployment blocker**: real-device passkeys require `https://<WEBAUTHN_RP_ID>/.well-known/assetlinks.json` with `delegate_permission/common.get_login_creds` for `com.neutralpip.app` + SHA-256 cert fingerprint. Backend serves this route when `ANDROID_PACKAGE_NAME` + `ANDROID_CERT_SHA256` are set in `.env`.
+
 ## Trading backend rules (`lib/services/trading_api_service.dart`)
 
 - **TRADING MODE: never add tap-based execution.** The trading path must not depend on `ScreenAutomationService`/`TaskExecutor`/`ActionHandler` and must never call taps/swipes. Only screenshots (`captureChartScreenshot`) are allowed there — and the current UI no longer uses it.
 - When a backend URL is set, chat posts to `{backend}/chat` with `message`, `history`, `attachments` (metadata only), and singular `chart_url` (first URL attachment wins). Any non-200 / missing `reply` falls through to the direct AI call.
-- `analyze()` posts to `POST {backend}/analyze` with `{ user_id, symbol, timeframe }` (strategy + backtest + live chart + account state pipeline); falls back to a stub only when no backend is configured.
-- Strategy training (`POST/GET /strategy`, `POST /backtest`) and auto-execute (`GET/PATCH /settings`) hit the same backend; `GET /journal` and `GET /risk-status` are wired to the real endpoints with empty/unknown stubs when unconfigured.
+- `analyze()` posts to `POST {backend}/analyze` with `{ symbol, timeframe }` and **Bearer session token** (strategy + backtest + live chart + account state pipeline); falls back to a stub only when no backend is configured. **No raw user_id is sent** — the backend resolves identity from the session token.
+- Strategy training (`POST/GET /strategy`, `POST /backtest`) and auto-execute (`GET/PATCH /settings`) hit the same backend with Bearer token; `GET /journal` and `GET /risk-status` are wired to the real endpoints with empty/unknown stubs when unconfigured.
 - Live market data: the Home dashboard watchlist and the Analysis screen ticker strip (`LiveTickerStrip` in `lib/widgets/trading_widgets.dart`) poll `GET /quote` on a 6s `Timer.periodic` and animate price/change updates (`AnimatedSwitcher`/`AnimatedContainer`); they fall back to curated static data when no backend is configured. The dashboard bell opens an Activity bottom sheet fed by `GET /journal` + `GET /settings`.
+- **Live price binding**: watchlist rows show a `LIVE` badge with animated price/change transitions when the 6s poll returns a fresh quote (< 30s old), and a `STALE` indicator when the feed is lagging or the backend is unreachable. Signal cards (`TradeCard` in `lib/widgets/trade_card.dart`) bind live quotes by matching the signal pair to the watchlist symbol — they display the current market price, 24h change, and a delta badge showing how far the live price is from the signal's entry level.
 - Live charts: `lib/widgets/tradingview_chart.dart` embeds TradingView's official Advanced Chart widget (dark theme) in a WebView (`webview_flutter`), parameterized by symbol/timeframe (`lib/screens/chart_screen.dart`). It is display-only — nothing is extracted from the page and no credentials are involved; tap a dashboard watchlist row or the Analysis AppBar candlestick icon to open it. Watchlist symbols/timeframes come from SharedPreferences (`watchlist_symbols`/`watchlist_timeframes`, saved by Connect Trading Accounts).
 - The trading UI screens (`risk_dashboard_screen.dart`, `journal_screen.dart`) use shared widgets: `SignalChip`, `PriceText`, `RiskBar`, `StatCard`, `TradingAvatar` in `lib/widgets/`.
 
@@ -70,7 +98,7 @@ They remain because `overlay_main.dart` and the legacy dashboard still import th
 
 The backend lives at `/home/ubuntu/meridian-backend` (Node/Express 5, CommonJS, deps: axios/cors/dotenv/helmet/uuid — not a git repo). It is deployed separately to the EC2 host; the app only knows it via the Trading Backend URL setting.
 
-- Endpoints: `POST/GET /strategy`, `POST /backtest`, `GET/PATCH /settings`, `POST /analyze`, `GET /journal`, `GET /risk-status`, `POST /execute-trade-signal`, `POST /connect-account`, `GET /account-status`, `POST /disconnect-account`, `POST /chat`, `GET /quote`, `GET /chart`, `GET /health`.
+- Endpoints: `POST/GET /strategy`, `POST /backtest`, `GET/PATCH /settings`, `POST /analyze`, `GET /journal`, `GET /risk-status`, `POST /execute-trade-signal`, `POST /connect-account`, `GET /account-status`, `POST /disconnect-account`, `POST /chat`, `GET /quote`, `GET /chart`, `GET /health`, `GET /.well-known/assetlinks.json` (Android passkey association, served when `ANDROID_PACKAGE_NAME` + `ANDROID_CERT_SHA256` are set).
 - `GET /quote?symbol=&timeframe=` returns the latest price, `change_percent` (vs N candles back, default 24), indicator snapshot (RSI/EMA/MACD/ATR), and a 32-candle `spark` for sparklines. `GET /chart?symbol=&timeframe=&limit=` returns OHLC candles. Both reuse the cached `market-data` layer so the app's 6s poll timers never hit upstream APIs directly.
 - `lib/` modules: `crypto-utils` (AES-256-GCM at rest; key from `STRATEGY_ENC_KEY` or auto-generated `data/enc_key`), `store` (atomic JSON file store), `market-data` (Yahoo chart API with browser UA + Binance fallback, 45s cache), `indicators` (EMA/RSI/MACD/ATR, dependency-free), `backtest-engine` (deterministic rule templates over real candles — never LLM-guessed stats), `risk-gate` (hard-coded gate: position size, daily loss cap, correlated exposure; an LLM can never override it), `mt5-bridge` (talks to `MT5_BACKEND_URL` bridge service), `claude` (Anthropic Messages API with `place_trade` tool + deterministic fallback when `CLAUDE_API_KEY` is unset), `analyze-pipeline` (orchestrates 1a–1g).
 - MT5 credentials are encrypted at rest, never logged, never returned in responses (only session tokens are).
