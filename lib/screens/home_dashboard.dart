@@ -18,11 +18,15 @@ import 'chart_screen.dart';
 class HomeDashboard extends StatefulWidget {
   final TradingApiService tradingApiService;
   final void Function(HomeQuickAction action) onQuickAction;
+  final VoidCallback? onOpenSettings;
+  final void Function(int tabIndex)? onGoToTab;
 
   const HomeDashboard({
     super.key,
     required this.tradingApiService,
     required this.onQuickAction,
+    this.onOpenSettings,
+    this.onGoToTab,
   });
 
   @override
@@ -165,6 +169,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  /// Open the live chart for the default symbol (first watchlist entry) on
+  /// the user's preferred timeframe, e.g. from the AppBar "Live chart" action.
+  Future<void> _openDefaultChart() async {
+    final symbols = await loadWatchlistSymbols();
+    final timeframe = await loadPreferredTimeframe();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ChartScreen(
+          initialSymbol: symbols.first,
+          initialTimeframe: timeframe,
+        ),
+      ),
+    );
+  }
+
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good morning';
@@ -194,6 +215,86 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // Upper navigation bar matching the Analysis screen's AppBar: menu,
+      // brand avatar + title, and the same action affordances.
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const TradingAvatar(size: 32),
+            const SizedBox(width: AppTokens.spaceSm),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Neutral Pip',
+                  style: AppFonts.heading(
+                    size: 17,
+                    weight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                Text(
+                  'AI Trading Co-Pilot',
+                  style: AppFonts.body(
+                    size: 10,
+                    weight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                    color: AppColors.amber,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        backgroundColor: Colors.transparent,
+        scrolledUnderElevation: 0,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu_rounded),
+            tooltip: 'Menu',
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        actions: [
+          // Activity bell with unread dot.
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                onPressed: _openActivitySheet,
+                icon: const Icon(Icons.notifications_rounded, size: 20),
+                tooltip: 'Activity',
+              ),
+              if (_hasUnreadActivity)
+                Positioned(
+                  top: 9,
+                  right: 9,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppColors.amber,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.candlestick_chart_rounded),
+            tooltip: 'Live chart',
+            onPressed: _openDefaultChart,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_rounded),
+            tooltip: 'Settings',
+            onPressed: () => widget.onOpenSettings?.call(),
+          ),
+        ],
+      ),
+      drawer: _buildDrawer(context, isDark),
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -289,6 +390,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildHeader(bool isDark, Color secondary) {
+    // The brand block (avatar + Neutral Pip / AI Trading Co-Pilot) and the
+    // activity bell now live in the AppBar; this header keeps the greeting
+    // and the live market status chip.
     return Row(
       children: [
         Expanded(
@@ -304,7 +408,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
               ),
               const SizedBox(height: 2),
               Text(
-                'Neutral Pip',
+                "Today's briefing",
                 style: AppFonts.heading(
                   size: AppTokens.headlineSize,
                   weight: FontWeight.w700,
@@ -314,39 +418,116 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ),
         ),
         _MarketStatusChip(isDark: isDark),
-        const SizedBox(width: AppTokens.spaceMd),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton.filledTonal(
-              onPressed: _openActivitySheet,
-              icon: const Icon(Icons.notifications_rounded, size: 20),
-              tooltip: 'Activity',
-              style: IconButton.styleFrom(
-                backgroundColor:
-                    isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-                foregroundColor:
-                    isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
-              ),
-            ),
-            if (_hasUnreadActivity)
-              Positioned(
-                top: 6,
-                right: 6,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.amber,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(width: AppTokens.spaceSm),
-        const TradingAvatar(size: 42),
       ],
+    );
+  }
+
+  /// Side navigation drawer mirroring the Analysis screen's drawer: same
+  /// brand header, then a nav list routed through the shell's tab switcher.
+  Widget _buildDrawer(BuildContext context, bool isDark) {
+    final drawerBg = isDark ? AppColors.bgDark : AppColors.bgLight;
+    final textStyle = AppFonts.body(
+      color: isDark
+          ? AppColors.textSecondaryDark
+          : AppColors.textSecondaryLight,
+      weight: FontWeight.w600,
+      size: 13.5,
+    );
+    final headerStyle = AppFonts.heading(
+      size: 17,
+      weight: FontWeight.w700,
+      letterSpacing: -0.5,
+      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+    );
+    final iconColor = isDark
+        ? AppColors.textSecondaryDark
+        : AppColors.textSecondaryLight;
+
+    void goTo(int tab) {
+      Navigator.pop(context); // Close the drawer
+      widget.onGoToTab?.call(tab);
+    }
+
+    return Drawer(
+      backgroundColor: drawerBg,
+      child: Column(
+        children: [
+          // Drawer header — same brand block as the Analysis screen's drawer.
+          Container(
+            padding: const EdgeInsets.only(
+              top: 60,
+              bottom: 20,
+              left: 24,
+              right: 24,
+            ),
+            alignment: Alignment.centerLeft,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.candlestick_chart_rounded,
+                  color: Theme.of(context).primaryColor,
+                  size: 26,
+                ),
+                const SizedBox(width: 12),
+                Text('Neutral Pip', style: headerStyle),
+              ],
+            ),
+          ),
+          const Divider(indent: 16, endIndent: 16, height: 20),
+          ListTile(
+            horizontalTitleGap: 8,
+            leading: Icon(
+              Icons.home_rounded,
+              color: iconColor,
+              size: 20,
+            ),
+            title: Text('Dashboard', style: textStyle),
+            onTap: () => goTo(0),
+          ),
+          ListTile(
+            horizontalTitleGap: 8,
+            leading: Icon(
+              Icons.candlestick_chart_rounded,
+              color: iconColor,
+              size: 20,
+            ),
+            title: Text('Analysis', style: textStyle),
+            onTap: () => goTo(1),
+          ),
+          ListTile(
+            horizontalTitleGap: 8,
+            leading: Icon(
+              Icons.menu_book_rounded,
+              color: iconColor,
+              size: 20,
+            ),
+            title: Text('Journal', style: textStyle),
+            onTap: () => goTo(2),
+          ),
+          ListTile(
+            horizontalTitleGap: 8,
+            leading: Icon(
+              Icons.shield_rounded,
+              color: iconColor,
+              size: 20,
+            ),
+            title: Text('Risk', style: textStyle),
+            onTap: () => goTo(3),
+          ),
+          const Divider(indent: 16, endIndent: 16, height: 20),
+          ListTile(
+            horizontalTitleGap: 8,
+            leading: Icon(
+              Icons.settings_rounded,
+              color: iconColor,
+              size: 20,
+            ),
+            title: Text('Settings', style: textStyle),
+            onTap: () => goTo(4),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
     );
   }
 

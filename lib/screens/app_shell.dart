@@ -37,7 +37,7 @@ class _AppShellState extends State<AppShell> {
 
   static const List<_TabSpec> _tabs = [
     _TabSpec(Icons.home_rounded, 'Home'),
-    _TabSpec(Icons.auto_awesome_rounded, 'Analysis'),
+    _TabSpec(Icons.candlestick_chart_rounded, 'Analysis'),
     _TabSpec(Icons.menu_book_rounded, 'Journal'),
     _TabSpec(Icons.shield_rounded, 'Risk'),
     _TabSpec(Icons.settings_rounded, 'Settings'),
@@ -105,6 +105,8 @@ class _AppShellState extends State<AppShell> {
                   HomeDashboard(
                     tradingApiService: _tradingApiService,
                     onQuickAction: _handleQuickAction,
+                    onOpenSettings: () => _goToTab(4),
+                    onGoToTab: _goToTab,
                   ),
                   HomeScreen(
                     key: _homeKey,

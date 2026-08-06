@@ -92,6 +92,7 @@ The backend lives at `/home/ubuntu/meridian-backend` (Node/Express 5, CommonJS, 
 - `local_plugins/agent_native/` is a generated plugin scaffold (method-channel template) that is **not referenced anywhere** in the app — leave it alone or remove it, but don't wire it in.
 - minSdk 26 (Android 8.0), applicationId `com.neutralpip.app`. Release APKs are also checked for Android 15/16's 16 KB native-library alignment.
 - UI theme: dark trading co-pilot theme in `lib/config/theme.dart` (`AppColors` with `amber` primary, `surfaceDark` cards, `bear` = red); overlay uses JetBrains Mono via `google_fonts`. Screens: `home_screen.dart` (main chat), `settings_screen.dart`, `onboarding_screen.dart`.
+- Home dashboard (`home_dashboard.dart`) shares the Analysis screen's upper nav: same AppBar (menu button + `TradingAvatar(32)` brand block, `scrolledUnderElevation: 0`) with dashboard-specific actions (activity bell, live-chart, settings), and a navigation drawer (`_buildDrawer`) that routes through the shell's `onGoToTab` callback. The bottom floating nav's Analysis tab uses `Icons.candlestick_chart_rounded` (trading chart, not the old sparkle icon).
 - Notable uncommitted local change: `android/gradle.properties` has duplicated `org.gradle.jvmargs`/`org.gradle.daemon=false` lines (memory-constrained build tweak, 1 GiB heap). Don't commit this accidentally.
 
 ## Git history context
