@@ -265,61 +265,89 @@ class _SettingsScreenState extends State<SettingsScreen>
     required List<Widget> children,
     required bool isDark,
   }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 20),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).primaryColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: Theme.of(context).primaryColor,
-                    size: 20,
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTokens.spaceLg),
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+        border: Border.all(
+          color: scheme.outlineVariant,
+          width: AppTokens.borderWidth,
+        ),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+                  border: Border.all(
+                    color: AppColors.amber.withValues(alpha: 0.25),
+                    width: 1,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                child: Icon(icon, color: AppColors.amber, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title.toUpperCase(),
+                      style: AppFonts.body(
+                        size: 13,
+                        weight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
                       Text(
-                        title.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                          color: Theme.of(context).colorScheme.onSurface,
+                        subtitle,
+                        style: AppFonts.body(
+                          size: 12,
+                          color: isDark
+                              ? AppColors.textSecondaryDark
+                              : AppColors.textSecondaryLight,
                         ),
                       ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark
-                                ? AppColors.textSecondaryDark
-                                : AppColors.textSecondaryLight,
-                          ),
-                        ),
-                      ],
                     ],
-                  ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            ...children,
-          ],
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTokens.spaceLg),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  /// Tiny uppercase label separating logical groups of setting cards.
+  Widget _sectionLabel(String text) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(
+        top: AppTokens.spaceMd,
+        bottom: AppTokens.spaceSm,
+      ),
+      child: Text(
+        text.toUpperCase(),
+        style: AppFonts.body(
+          size: AppTokens.fontSizeTiny,
+          weight: FontWeight.w700,
+          letterSpacing: 1.4,
+          color: scheme.onSurfaceVariant,
         ),
       ),
     );
@@ -332,6 +360,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     Widget? suffixIcon,
   }) {
     final scheme = Theme.of(context).colorScheme;
+    const radius = BorderRadius.all(Radius.circular(AppTokens.radiusControl));
+    final borderSide = BorderSide(color: scheme.outlineVariant, width: 1);
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
@@ -339,32 +369,23 @@ class _SettingsScreenState extends State<SettingsScreen>
       suffixIcon: suffixIcon,
       filled: true,
       fillColor: scheme.surfaceContainerHighest,
-      labelStyle: TextStyle(
+      labelStyle: AppFonts.body(
+        size: 13,
+        weight: FontWeight.w600,
         color: scheme.onSurfaceVariant,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
       ),
-      hintStyle: TextStyle(
-        color: scheme.onSurfaceVariant.withOpacity(0.7),
-        fontSize: 13,
+      hintStyle: AppFonts.body(
+        size: 13,
+        color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: scheme.outlineVariant,
-          width: 1.2,
-        ),
-      ),
+      border: OutlineInputBorder(borderRadius: radius, borderSide: borderSide),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: scheme.outlineVariant,
-          width: 1.2,
-        ),
+        borderRadius: radius,
+        borderSide: borderSide,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: radius,
         borderSide: BorderSide(
           color: Theme.of(context).colorScheme.primary,
           width: 1.8,
@@ -377,17 +398,24 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Settings',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: AppFonts.heading(
+            size: AppTokens.headlineSize,
+            weight: FontWeight.w700,
+            color: scheme.onSurface,
+          ),
         ),
+        centerTitle: false,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [
-          // 1. Appearance Card
+          // Appearance
+          _sectionLabel('Appearance'),
           _buildSettingsCard(
             icon: Icons.palette_outlined,
             title: 'Appearance',
@@ -412,9 +440,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           context,
                         ).colorScheme.onSurface,
                         side: BorderSide(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.outlineVariant,
+                          color: Theme.of(context).colorScheme.outlineVariant,
                         ),
                       ),
                       segments: [
@@ -467,6 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
 
           // 2. AI Engine Config Card
+          _sectionLabel('AI & Agent'),
           _buildSettingsCard(
             icon: Icons.psychology_outlined,
             title: 'AI Engine Configuration',
@@ -786,6 +813,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
 
           // 5. Telegram Remote Access Card
+          _sectionLabel('Connectivity'),
           _buildSettingsCard(
             icon: Icons.send_and_archive_outlined,
             title: 'Telegram Remote Access',
@@ -814,6 +842,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
 
           // 6. Accessibility Screen Control Card
+          _sectionLabel('System Access'),
           _buildSettingsCard(
             icon: Icons.visibility_outlined,
             title: 'Screen Control (Accessibility)',
@@ -858,7 +887,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
 
           // 9. Trading Mode Backend Card (only shown in Trading Mode)
-          if (widget.tradingModeEnabled)
+          if (widget.tradingModeEnabled) ...[
+            _sectionLabel('Trading'),
             _buildSettingsCard(
               icon: Icons.api_rounded,
               title: 'Trading Mode Backend',
@@ -901,8 +931,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ],
             ),
+          ],
 
           // 10. About / Links Card
+          _sectionLabel('About'),
           _buildSettingsCard(
             icon: Icons.info_outline_rounded,
             title: 'About Neutral Pip',
@@ -980,9 +1012,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           style: TextStyle(
             color: isGranted
                 ? Theme.of(context).colorScheme.primary
-                : (status?.isDenied ?? true
-                      ? AppColors.amber
-                      : AppColors.bear),
+                : (status?.isDenied ?? true ? AppColors.amber : AppColors.bear),
             fontSize: 12,
           ),
         ),
@@ -1027,74 +1057,76 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildShizukuCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  widget.shizukuService.isAvailable
-                      ? Icons.link
-                      : Icons.link_off,
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+        border: Border.all(color: scheme.outlineVariant, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                widget.shizukuService.isAvailable ? Icons.link : Icons.link_off,
+                color: widget.shizukuService.isAvailable
+                    ? AppColors.bull
+                    : AppColors.textSecondaryDark,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                widget.shizukuService.isAvailable
+                    ? 'Shizuku is running'
+                    : 'Shizuku not detected',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
                   color: widget.shizukuService.isAvailable
                       ? AppColors.bull
                       : AppColors.textSecondaryDark,
                 ),
-                const SizedBox(width: 8),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (!widget.shizukuService.isAvailable) ...[
+            const Text(
+              '1. Install Shizuku from Play Store\n'
+              '2. Open Shizuku and start it via Wireless Debugging\n'
+              '3. Come back here and tap "Check Again"',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: () async {
+                await widget.shizukuService.checkAvailability();
+                if (mounted) setState(() {});
+              },
+              child: const Text('Check Again'),
+            ),
+          ] else if (!widget.shizukuService.hasPermission) ...[
+            OutlinedButton(
+              onPressed: () async {
+                await widget.shizukuService.requestPermission();
+                if (mounted) setState(() {});
+              },
+              child: const Text('Grant Shizuku Permission'),
+            ),
+          ] else ...[
+            Row(
+              children: [
+                const Icon(Icons.check_circle, color: AppColors.bull, size: 16),
+                const SizedBox(width: 4),
                 Text(
-                  widget.shizukuService.isAvailable
-                      ? 'Shizuku is running'
-                      : 'Shizuku not detected',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: widget.shizukuService.isAvailable
-                        ? AppColors.bull
-                        : AppColors.textSecondaryDark,
-                  ),
+                  'Permission granted — ADB commands available',
+                  style: TextStyle(color: AppColors.bull, fontSize: 13),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (!widget.shizukuService.isAvailable) ...[
-              const Text(
-                '1. Install Shizuku from Play Store\n'
-                '2. Open Shizuku and start it via Wireless Debugging\n'
-                '3. Come back here and tap "Check Again"',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: () async {
-                  await widget.shizukuService.checkAvailability();
-                  if (mounted) setState(() {});
-                },
-                child: const Text('Check Again'),
-              ),
-            ] else if (!widget.shizukuService.hasPermission) ...[
-              OutlinedButton(
-                onPressed: () async {
-                  await widget.shizukuService.requestPermission();
-                  if (mounted) setState(() {});
-                },
-                child: const Text('Grant Shizuku Permission'),
-              ),
-            ] else ...[
-              Row(
-                children: [
-                  const Icon(Icons.check_circle, color: AppColors.bull, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Permission granted — ADB commands available',
-                    style: TextStyle(color: AppColors.bull, fontSize: 13),
-                  ),
-                ],
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1105,53 +1137,63 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (context, snapshot) {
         final isRunning = snapshot.data ?? false;
 
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isRunning ? Icons.visibility : Icons.visibility_off,
-                      color: isRunning ? AppColors.bull : AppColors.textSecondaryDark,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      isRunning
-                          ? 'Screen Control is active'
-                          : 'Screen Control is disabled',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: isRunning ? AppColors.bull : AppColors.textSecondaryDark,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (!isRunning) ...[
-                  const Text(
-                    'Tap below to open Accessibility Settings, then find "Neutral Pip Screen Control" and enable it.',
-                    style: TextStyle(fontSize: 13),
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(AppTokens.radiusControl),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isRunning ? Icons.visibility : Icons.visibility_off,
+                    color: isRunning
+                        ? AppColors.bull
+                        : AppColors.textSecondaryDark,
                   ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      await widget.screenAutomationService
-                          .openAccessibilitySettings();
-                    },
-                    icon: const Icon(Icons.settings),
-                    label: const Text('Open Accessibility Settings'),
-                  ),
-                ] else ...[
+                  const SizedBox(width: 8),
                   Text(
-                    'Can read screen, tap, scroll, and type in other apps',
-                    style: TextStyle(color: AppColors.bull, fontSize: 13),
+                    isRunning
+                        ? 'Screen Control is active'
+                        : 'Screen Control is disabled',
+                    style: AppFonts.body(
+                      weight: FontWeight.w600,
+                      color: isRunning
+                          ? AppColors.bull
+                          : AppColors.textSecondaryDark,
+                    ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              if (!isRunning) ...[
+                Text(
+                  'Tap below to open Accessibility Settings, then find "Neutral Pip Screen Control" and enable it.',
+                  style: AppFonts.body(size: 13),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await widget.screenAutomationService
+                        .openAccessibilitySettings();
+                  },
+                  icon: const Icon(Icons.settings),
+                  label: const Text('Open Accessibility Settings'),
+                ),
+              ] else ...[
+                Text(
+                  'Can read screen, tap, scroll, and type in other apps',
+                  style: AppFonts.body(size: 13, color: AppColors.bull),
+                ),
               ],
-            ),
+            ],
           ),
         );
       },

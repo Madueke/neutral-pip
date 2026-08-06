@@ -21,13 +21,15 @@ class RiskBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final double clamped = fraction.clamp(0.0, 1.0);
+    final Color trackColor = scheme.surfaceContainerHighest;
     final Color fillColor = clamped >= dangerLimit
         ? AppColors.bear
         : clamped >= highLimit
-            ? AppColors.amber
-            : AppColors.bull;
-    final Color textColor = Theme.of(context).colorScheme.onSurface;
+        ? AppColors.amber
+        : AppColors.bull;
+    final Color textColor = scheme.onSurface;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,18 +42,18 @@ class RiskBar extends StatelessWidget {
               children: [
                 Text(
                   leftLabel,
-                  style: TextStyle(
-                    fontSize: AppTokens.captionSize,
-                    fontWeight: FontWeight.w600,
+                  style: AppFonts.body(
+                    size: AppTokens.captionSize,
+                    weight: FontWeight.w600,
                     color: textColor,
                   ),
                 ),
                 Text(
                   rightLabel,
-                  style: TextStyle(
-                    fontSize: AppTokens.captionSize,
+                  style: AppFonts.body(
+                    size: AppTokens.captionSize,
+                    weight: FontWeight.w700,
                     color: fillColor,
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -63,12 +65,24 @@ class RiskBar extends StatelessWidget {
             height: 8,
             child: Stack(
               children: [
-                Container(color: AppColors.borderDark),
+                Container(color: trackColor),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: FractionallySizedBox(
                     widthFactor: clamped,
-                    child: Container(color: fillColor),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                          AppTokens.radiusChip,
+                        ),
+                        gradient: LinearGradient(
+                          colors: [
+                            fillColor.withValues(alpha: 0.65),
+                            fillColor,
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],

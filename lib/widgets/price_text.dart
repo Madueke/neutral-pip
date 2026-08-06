@@ -21,20 +21,21 @@ class PriceText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color resolved = color ??
+    final Color resolved =
+        color ??
         (change == null
             ? Theme.of(context).colorScheme.onSurface
             : change! >= 0
-                ? AppColors.bull
-                : AppColors.bear);
+            ? AppColors.bull
+            : AppColors.bear);
     return Text(
       text,
-      style: TextStyle(
-        fontSize: fontSize,
-        fontWeight: FontWeight.w700,
-        fontFeatures: const [FontFeature.tabularFigures()],
+      style: AppFonts.body(
+        size: fontSize,
+        weight: FontWeight.w700,
+        height: 1.2,
         color: resolved,
-      ),
+      ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
     );
   }
 }

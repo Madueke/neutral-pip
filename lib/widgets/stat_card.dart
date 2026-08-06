@@ -24,12 +24,13 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final Color resolvedDelta = deltaColor ??
+    final Color resolvedDelta =
+        deltaColor ??
         (delta == null
             ? scheme.onSurfaceVariant
             : delta!.startsWith('-')
-                ? AppColors.bear
-                : AppColors.bull);
+            ? AppColors.bear
+            : AppColors.bull);
 
     return Container(
       padding: const EdgeInsets.all(AppTokens.spaceMd),
@@ -40,6 +41,7 @@ class StatCard extends StatelessWidget {
           color: scheme.outlineVariant,
           width: AppTokens.borderWidth,
         ),
+        boxShadow: AppShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,9 +49,9 @@ class StatCard extends StatelessWidget {
         children: [
           Text(
             label.toUpperCase(),
-            style: TextStyle(
-              fontSize: AppTokens.fontSizeTiny,
-              fontWeight: FontWeight.w600,
+            style: AppFonts.body(
+              size: AppTokens.fontSizeTiny,
+              weight: FontWeight.w600,
               letterSpacing: 0.8,
               color: scheme.onSurfaceVariant,
             ),
@@ -69,9 +71,9 @@ class StatCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Text(
                   delta!,
-                  style: TextStyle(
-                    fontSize: AppTokens.captionSize,
-                    fontWeight: FontWeight.w700,
+                  style: AppFonts.body(
+                    size: AppTokens.captionSize,
+                    weight: FontWeight.w700,
                     color: resolvedDelta,
                   ),
                 ),

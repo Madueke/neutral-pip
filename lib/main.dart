@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'dart:developer';
 import 'config/feature_flags.dart';
 import 'config/theme.dart';
-import 'screens/home_screen.dart';
+import 'screens/app_shell.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/splash_screen.dart';
 import 'overlay_main.dart';
 
 @pragma("vm:entry-point")
@@ -37,9 +37,7 @@ void overlayMain() {
           error: AppColors.bear,
           onError: Colors.white,
         ),
-        textTheme: GoogleFonts.jetBrainsMonoTextTheme(
-          ThemeData.dark().textTheme,
-        ),
+        textTheme: AppTheme.darkTextTheme,
       ),
       builder: (context, child) {
         return Container(color: Colors.transparent, child: child);
@@ -93,9 +91,11 @@ class NeutralPipApp extends StatelessWidget {
           themeMode: currentMode,
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
-          home: onboardingCompleted
-              ? const HomeScreen()
-              : const OnboardingScreen(),
+          home: SplashScreen(
+            next: onboardingCompleted
+                ? const AppShell()
+                : const OnboardingScreen(),
+          ),
         );
       },
     );

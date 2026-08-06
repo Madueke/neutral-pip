@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand splash background (matches AppColors.bgDark in lib/config/theme.dart) -->
+    <color name="splash_background">#0B0F19</color>
+    <!-- Ambient glow tint used behind the launch logo -->
+    <color name="splash_glow">#F5B800</color>
+</resources>

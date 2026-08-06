@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
+import '../models/home_quick_action.dart';
 import '../config/theme.dart';
 import '../services/ai_service.dart';
 import '../services/action_handler.dart';
@@ -29,19 +30,44 @@ import '../config/feature_flags.dart';
 enum AttachmentSource { gallery, camera, file, screenshot, chartUrl }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.aiService,
+    this.actionHandler,
+    this.voiceService,
+    this.notificationService,
+    this.telegramService,
+    this.tradingApiService,
+    this.tradingModeEnabled,
+    this.onOpenSettings,
+  });
+
+  /// Optional injected services — when provided (e.g. by [AppShell]) the
+  /// same instances are shared across tabs so settings propagate.
+  final AiService? aiService;
+  final ActionHandler? actionHandler;
+  final VoiceService? voiceService;
+  final NotificationService? notificationService;
+  final TelegramService? telegramService;
+  final TradingApiService? tradingApiService;
+  final bool? tradingModeEnabled;
+
+  /// When set, the Settings action routes to this callback instead of
+  /// pushing a fresh SettingsScreen (used by the tab shell).
+  final VoidCallback? onOpenSettings;
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final AiService _aiService = AiService();
-  final ActionHandler _actionHandler = ActionHandler();
-  final VoiceService _voiceService = VoiceService();
-  final NotificationService _notificationService = NotificationService();
+  final FocusNode _textFocusNode = FocusNode();
+  late final AiService _aiService;
+  late final ActionHandler _actionHandler;
+  late final VoiceService _voiceService;
+  late final NotificationService _notificationService;
   late final TelegramService _telegramService;
 
   final List<ChatMessage> _messages = [];
@@ -70,12 +96,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _telegramService = TelegramService(_actionHandler, _aiService);
-    _tradingApiService = TradingApiService(_aiService);
+    _aiService = widget.aiService ?? AiService();
+    _actionHandler = widget.actionHandler ?? ActionHandler();
+    _voiceService = widget.voiceService ?? VoiceService();
+    _notificationService = widget.notificationService ?? NotificationService();
+    _telegramService =
+        widget.telegramService ?? TelegramService(_actionHandler, _aiService);
+    _tradingApiService =
+        widget.tradingApiService ?? TradingApiService(_aiService);
+    _tradingModeEnabled = widget.tradingModeEnabled ?? false;
     _initServices();
     _startOverlayHistorySync();
     // Register as the handler for overlay bubble tasks
     onOverlayTask = (task) => _sendMessage(task);
+  }
+
+  /// Entry point for dashboard quick actions (AppShell tab routing).
+  void runQuickAction(HomeQuickAction action) {
+    switch (action) {
+      case HomeQuickAction.captureChart:
+        if (_tradingModeEnabled) {
+          _captureChartScreenshot();
+        } else {
+          _showAttachmentPicker();
+        }
+      case HomeQuickAction.pasteUrl:
+        _promptChartUrl();
+      case HomeQuickAction.askAi:
+        _focusInput();
+      case HomeQuickAction.upload:
+        _showAttachmentPicker();
+    }
+  }
+
+  void _focusInput() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(_textFocusNode);
+    });
   }
 
   Future<void> _initServices() async {
@@ -126,9 +184,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final userMessage = ChatMessage(
       role: 'user',
       content: text.trim(),
-      attachments: attachments
-          .map((a) => ChatAttachment.fromJson(a))
-          .toList(),
+      attachments: attachments.map((a) => ChatAttachment.fromJson(a)).toList(),
     );
     _pendingAttachments.clear();
     setState(() {
@@ -422,6 +478,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _overlayHistoryTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
+    _textFocusNode.dispose();
     _voiceService.dispose();
     _telegramService.dispose();
     super.dispose();
@@ -557,9 +614,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(width: AppTokens.spaceSm),
             Text(
               'Neutral Pip',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
+              style: AppFonts.heading(
+                size: 17,
+                weight: FontWeight.w700,
                 letterSpacing: -0.3,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
@@ -585,6 +642,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           IconButton(
             icon: const Icon(Icons.settings_rounded),
             onPressed: () async {
+              final onOpenSettings = widget.onOpenSettings;
+              if (onOpenSettings != null) {
+                onOpenSettings();
+                return;
+              }
               await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -643,10 +705,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.amber.withOpacity(0.15),
+                    color: AppColors.amber.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: AppColors.amber.withOpacity(0.3),
+                      color: AppColors.amber.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(
@@ -730,12 +792,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(width: 10),
                       Text(
                         'Thinking...',
-                        style: TextStyle(
-                          fontSize: 12,
+                        style: AppFonts.body(
+                          size: 12,
+                          weight: FontWeight.w500,
                           color: isDark
-                              ? const Color(0xFF9E9BAC)
-                              : const Color(0xFF6C6A7C),
-                          fontWeight: FontWeight.w500,
+                              ? AppColors.textSecondaryDark
+                              : AppColors.textSecondaryLight,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -751,12 +813,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           size: 16,
                           color: AppColors.bear,
                         ),
-                        label: const Text(
+                        label: Text(
                           'Stop',
-                          style: TextStyle(
+                          style: AppFonts.body(
+                            size: 12,
+                            weight: FontWeight.w700,
                             color: AppColors.bear,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
                           ),
                         ),
                         style: TextButton.styleFrom(
@@ -780,16 +842,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildDrawer(BuildContext context, bool isDark) {
     final drawerBg = isDark ? AppColors.bgDark : AppColors.bgLight;
-    final textStyle = TextStyle(
-      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
-      fontWeight: FontWeight.w600,
-      fontSize: 13.5,
+    final textStyle = AppFonts.body(
+      color: isDark
+          ? AppColors.textSecondaryDark
+          : AppColors.textSecondaryLight,
+      weight: FontWeight.w600,
+      size: 13.5,
     );
-    final headerStyle = TextStyle(
-      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
-      fontSize: 17,
-      fontWeight: FontWeight.w900,
+    final headerStyle = AppFonts.heading(
+      size: 17,
+      weight: FontWeight.w700,
       letterSpacing: -0.5,
+      color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
     );
 
     return Drawer(
@@ -830,7 +894,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   BoxShadow(
                     color: Theme.of(
                       context,
-                    ).colorScheme.primary.withOpacity(0.2),
+                    ).colorScheme.primary.withValues(alpha: 0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
@@ -844,12 +908,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _startNewChat();
                   },
                   borderRadius: BorderRadius.circular(16),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.add_comment_rounded,
                           color: AppColors.onAmber,
                           size: 16,
@@ -857,10 +921,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         const SizedBox(width: 8),
                         Text(
                           'New Chat',
-                          style: TextStyle(
+                          style: AppFonts.body(
+                            size: 13.5,
+                            weight: FontWeight.w700,
                             color: AppColors.onAmber,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13.5,
                           ),
                         ),
                       ],
@@ -880,11 +944,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               alignment: Alignment.centerLeft,
               child: Text(
                 'CHAT HISTORY',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).primaryColor,
+                style: AppFonts.body(
+                  size: 10,
+                  weight: FontWeight.w800,
                   letterSpacing: 1.5,
+                  color: Theme.of(context).primaryColor,
                 ),
               ),
             ),
@@ -899,11 +963,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   return Center(
                     child: Text(
                       'No recent chats',
-                      style: TextStyle(
+                      style: AppFonts.body(
+                        size: 12,
                         color: isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondaryLight,
-                        fontSize: 12,
+                            ? AppColors.textSecondaryDark
+                            : AppColors.textSecondaryLight,
                       ),
                     ),
                   );
@@ -926,14 +990,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         color: isCurrent
                             ? Theme.of(
                                 context,
-                              ).colorScheme.primary.withOpacity(0.08)
+                              ).colorScheme.primary.withValues(alpha: 0.08)
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(12),
                         border: isCurrent
                             ? Border.all(
                                 color: Theme.of(
                                   context,
-                                ).colorScheme.primary.withOpacity(0.15),
+                                ).colorScheme.primary.withValues(alpha: 0.15),
                               )
                             : null,
                       ),
@@ -948,7 +1012,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           size: 15,
                           color: isCurrent
                               ? Theme.of(context).colorScheme.primary
-                              : (Theme.of(context).colorScheme.onSurfaceVariant),
+                              : (Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant),
                         ),
                         title: Text(
                           session.title,
@@ -969,7 +1035,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           icon: Icon(
                             Icons.delete_outline_rounded,
                             size: 16,
-                            color: AppColors.bear.withOpacity(0.7),
+                            color: AppColors.bear.withValues(alpha: 0.7),
                           ),
                           onPressed: () async {
                             await ChatHistoryService.deleteSession(session.id);
@@ -999,7 +1065,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             horizontalTitleGap: 8,
             leading: Icon(
               Icons.history_rounded,
-              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              color: isDark
+                  ? AppColors.textSecondaryDark
+                  : AppColors.textSecondaryLight,
               size: 20,
             ),
             title: Text('Task History', style: textStyle),
@@ -1015,7 +1083,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             horizontalTitleGap: 8,
             leading: Icon(
               Icons.settings_rounded,
-              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              color: isDark
+                  ? AppColors.textSecondaryDark
+                  : AppColors.textSecondaryLight,
               size: 20,
             ),
             title: Text('Settings', style: textStyle),
@@ -1057,11 +1127,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? AppColors.amber.withOpacity(0.10)
-                        : AppColors.amber.withOpacity(0.07),
+                        ? AppColors.amber.withValues(alpha: 0.10)
+                        : AppColors.amber.withValues(alpha: 0.07),
                     isDark
-                        ? AppColors.amber.withOpacity(0)
-                        : AppColors.amber.withOpacity(0),
+                        ? AppColors.amber.withValues(alpha: 0)
+                        : AppColors.amber.withValues(alpha: 0),
                   ],
                 ),
               ),
@@ -1078,11 +1148,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? const Color(0xFF334155).withOpacity(0.35)
-                        : const Color(0xFF94A3B8).withOpacity(0.12),
+                        ? const Color(0xFF334155).withValues(alpha: 0.35)
+                        : const Color(0xFF94A3B8).withValues(alpha: 0.12),
                     isDark
-                        ? const Color(0xFF334155).withOpacity(0)
-                        : const Color(0xFF94A3B8).withOpacity(0),
+                        ? const Color(0xFF334155).withValues(alpha: 0)
+                        : const Color(0xFF94A3B8).withValues(alpha: 0),
                   ],
                 ),
               ),
@@ -1102,9 +1172,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: activeBg,
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
           border: Border.all(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.06),
           ),
         ),
         child: Row(
@@ -1146,7 +1218,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
           color: isSelected
               ? Theme.of(context).colorScheme.primary
               : Colors.transparent,
@@ -1155,7 +1227,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   BoxShadow(
                     color: Theme.of(
                       context,
-                    ).colorScheme.primary.withOpacity(0.20),
+                    ).colorScheme.primary.withValues(alpha: 0.20),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -1176,14 +1248,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
+              style: AppFonts.body(
+                size: 13,
+                weight: FontWeight.w700,
                 color: isSelected
                     ? AppColors.onAmber
                     : (isDark
                           ? AppColors.textSecondaryDark
                           : AppColors.textSecondaryLight),
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
               ),
             ),
           ],
@@ -1201,11 +1273,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: (isDark ? AppColors.surfaceElevatedDark : AppColors.surfaceElevatedLight)
-              .withOpacity(0.6),
+          color:
+              (isDark
+                      ? AppColors.surfaceElevatedDark
+                      : AppColors.surfaceElevatedLight)
+                  .withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.35),
           ),
         ),
         child: Row(
@@ -1220,9 +1297,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Flexible(
               child: Text(
                 'Execution via secure API — no on-screen automation used for trades.',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+                style: AppFonts.body(
+                  size: 11,
+                  weight: FontWeight.w600,
                   color: isDark
                       ? AppColors.textSecondaryDark
                       : AppColors.textSecondaryLight,
@@ -1305,9 +1382,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 4),
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: AppTokens.fontSizeTiny,
-                  fontWeight: FontWeight.w600,
+                style: AppFonts.body(
+                  size: AppTokens.fontSizeTiny,
+                  weight: FontWeight.w600,
                   color: scheme.onSurfaceVariant,
                 ),
               ),
@@ -1322,9 +1399,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => JournalScreen(
-          tradingApiService: _tradingApiService,
-        ),
+        builder: (_) => JournalScreen(tradingApiService: _tradingApiService),
       ),
     );
     if (mounted) setState(() {});
@@ -1334,9 +1409,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RiskDashboardScreen(
-          tradingApiService: _tradingApiService,
-        ),
+        builder: (_) =>
+            RiskDashboardScreen(tradingApiService: _tradingApiService),
       ),
     );
     if (mounted) setState(() {});
@@ -1354,9 +1428,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: activeBg,
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
           border: Border.all(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.06),
           ),
         ),
         child: Row(
@@ -1397,7 +1473,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
           color: isSelected
               ? Theme.of(context).colorScheme.primary
               : Colors.transparent,
@@ -1406,7 +1482,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   BoxShadow(
                     color: Theme.of(
                       context,
-                    ).colorScheme.primary.withOpacity(0.20),
+                    ).colorScheme.primary.withValues(alpha: 0.20),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -1427,14 +1503,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
+              style: AppFonts.body(
+                size: 13,
+                weight: FontWeight.w700,
                 color: isSelected
                     ? AppColors.onAmber
                     : (isDark
                           ? AppColors.textSecondaryDark
                           : AppColors.textSecondaryLight),
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
               ),
             ),
           ],
@@ -1502,25 +1578,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 children: [
                   Text(
                     timeGreeting,
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w300,
+                    style: AppFonts.heading(
+                      size: 30,
+                      weight: FontWeight.w300,
+                      letterSpacing: -1.5,
+                      height: 1.1,
                       color: isDark
                           ? AppColors.textSecondaryDark
                           : AppColors.textSecondaryLight,
-                      letterSpacing: -1.5,
-                      height: 1.1,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'How can I help you?',
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.primary,
+                    style: AppFonts.heading(
+                      size: 30,
+                      weight: FontWeight.w600,
                       letterSpacing: -1.5,
                       height: 1.2,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                 ],
@@ -1531,10 +1607,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Container(
                 padding: const EdgeInsets.all(AppTokens.spaceLg),
                 decoration: BoxDecoration(
-                  color: AppColors.amber.withOpacity(0.08),
+                  color: AppColors.amber.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(AppTokens.radiusCard),
                   border: Border.all(
-                    color: AppColors.amber.withOpacity(0.35),
+                    color: AppColors.amber.withValues(alpha: 0.35),
                     width: AppTokens.borderWidth,
                   ),
                 ),
@@ -1550,8 +1626,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: Text(
                         'Drop a chart screenshot or paste a TradingView URL '
                         'to get an AI signal read.',
-                        style: TextStyle(
-                          fontSize: 13,
+                        style: AppFonts.body(
+                          size: 13,
                           height: 1.4,
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
@@ -1566,13 +1642,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               alignment: Alignment.centerLeft,
               child: Text(
                 'SUGGESTIONS',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                style: AppFonts.body(
+                  size: 11,
+                  weight: FontWeight.w800,
+                  letterSpacing: 1.5,
                   color: isDark
                       ? AppColors.textSecondaryDark
                       : AppColors.textSecondaryLight,
-                  letterSpacing: 1.5,
                 ),
               ),
             ),
@@ -1608,8 +1684,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(
-                                isDark ? 0.1 : 0.02,
+                              color: Colors.black.withValues(
+                                alpha: isDark ? 0.1 : 0.02,
                               ),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
@@ -1619,9 +1695,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: Center(
                           child: Text(
                             suggestion,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
+                            style: AppFonts.body(
+                              size: 12.5,
+                              weight: FontWeight.w600,
                               color: isDark
                                   ? AppColors.textPrimaryDark
                                   : AppColors.textPrimaryLight,
@@ -1776,11 +1852,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     setState(() {
       _pendingAttachments.add(
-        ChatAttachment(
-          name: url,
-          path: url,
-          type: 'url',
-        ),
+        ChatAttachment(name: url, path: url, type: 'url'),
       );
     });
   }
@@ -1804,9 +1876,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not pick image: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not pick image: $e')));
       }
     }
   }
@@ -1823,7 +1895,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (result == null || result.files.isEmpty || !mounted) return;
       final file = result.files.first;
       final lowerName = file.name.toLowerCase();
-      final isImage = lowerName.endsWith('.png') ||
+      final isImage =
+          lowerName.endsWith('.png') ||
           lowerName.endsWith('.jpg') ||
           lowerName.endsWith('.jpeg');
       setState(() {
@@ -1838,14 +1911,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not pick file: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not pick file: $e')));
       }
     }
   }
 
   Widget _buildInputBar(bool isDark) {
+    final scheme = Theme.of(context).colorScheme;
+    final chipColor = Theme.of(context).cardTheme.color ?? scheme.surface;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       decoration: const BoxDecoration(color: Colors.transparent),
@@ -1885,61 +1960,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               // drives the Phone Control agent flow).
               if (!_tradingModeEnabled)
                 AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _isListening
-                      ? Colors.redAccent
-                      : Theme.of(context).cardTheme.color,
-                  border: Border.all(
-                    color: _isListening
-                        ? Colors.redAccent
-                        : Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withOpacity(0.08),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+                  duration: const Duration(milliseconds: 300),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _isListening ? Colors.redAccent : chipColor,
+                    border: Border.all(
+                      color: _isListening
+                          ? Colors.redAccent
+                          : scheme.onSurface.withValues(alpha: 0.08),
+                      width: 1.2,
                     ),
-                    if (_isListening)
+                    boxShadow: [
                       BoxShadow(
-                        color: Colors.redAccent.withOpacity(0.4),
-                        blurRadius: 12,
-                        spreadRadius: 2,
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.2 : 0.03,
+                        ),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
-                  ],
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                    color: _isListening
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.primary,
+                      if (_isListening)
+                        BoxShadow(
+                          color: Colors.redAccent.withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                    ],
                   ),
-                  onPressed: _isLoading ? null : _toggleVoice,
+                  child: IconButton(
+                    icon: Icon(
+                      _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                      color: _isListening
+                          ? Colors.white
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                    onPressed: _isLoading ? null : _toggleVoice,
+                  ),
                 ),
-              ),
               const SizedBox(width: 10),
 
               // Custom Text input container
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).cardTheme.color,
+                    color: chipColor,
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withOpacity(0.08),
+                      color: scheme.onSurface.withValues(alpha: 0.08),
                       width: 1.2,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.2 : 0.03,
+                        ),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -1957,13 +2030,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       Expanded(
                         child: TextField(
                           controller: _textController,
-                          style: const TextStyle(fontSize: 14),
+                          style: AppFonts.body(size: 14),
                           decoration: InputDecoration(
                             hintText: _isListening
                                 ? 'Listening...'
                                 : 'Type a command...',
-                            hintStyle: TextStyle(
-                              fontSize: 13,
+                            hintStyle: AppFonts.body(
+                              size: 13,
                               color: isDark
                                   ? AppColors.textSecondaryDark
                                   : AppColors.textSecondaryLight,
@@ -1978,9 +2051,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           onSubmitted: _isLoading
                               ? null
                               : (text) => _sendMessage(
-                                    text,
-                                    attachments: _attachmentMaps(),
-                                  ),
+                                  text,
+                                  attachments: _attachmentMaps(),
+                                ),
                         ),
                       ),
 
@@ -2000,9 +2073,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           onPressed: _isLoading
                               ? null
                               : () => _sendMessage(
-                                    _textController.text,
-                                    attachments: _attachmentMaps(),
-                                  ),
+                                  _textController.text,
+                                  attachments: _attachmentMaps(),
+                                ),
                         ),
                       ),
                     ],

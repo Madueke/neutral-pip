@@ -57,7 +57,7 @@ class _SparklinePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     final Paint fill = Paint()
-      ..color = color.withOpacity(0.12)
+      ..color = color.withValues(alpha: 0.12)
       ..style = PaintingStyle.fill;
 
     final Path area = Path.from(line)

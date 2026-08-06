@@ -11,8 +11,6 @@ class TradingAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color tileColor =
-        Theme.of(context).colorScheme.surfaceContainerHighest;
     final Color onTile = Theme.of(context).colorScheme.onSurface;
     final double glyphSize = size * 0.60;
     final double dotSize = size * 0.12;
@@ -28,7 +26,7 @@ class TradingAvatar extends StatelessWidget {
           colors: [AppColors.surfaceElevatedDark, AppColors.bgDark],
         ),
         border: Border.all(
-          color: AppColors.amber.withOpacity(0.45),
+          color: AppColors.amber.withValues(alpha: 0.45),
           width: 1.2,
         ),
       ),
@@ -65,9 +63,9 @@ class TradingAvatar extends StatelessWidget {
         const SizedBox(width: AppTokens.spaceMd),
         Text(
           'Neutral Pip',
-          style: TextStyle(
-            fontSize: size * 0.24,
-            fontWeight: FontWeight.w700,
+          style: AppFonts.heading(
+            size: size * 0.24,
+            weight: FontWeight.w700,
             letterSpacing: -0.2,
             color: onTile,
           ),

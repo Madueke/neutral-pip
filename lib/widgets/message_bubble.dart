@@ -30,7 +30,7 @@ class MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isUser
-              ? AppColors.amber.withOpacity(0.12)
+              ? AppColors.amber.withValues(alpha: 0.12)
               : scheme.surface,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(12),
@@ -40,7 +40,7 @@ class MessageBubble extends StatelessWidget {
           ),
           border: Border.all(
             color: isUser
-                ? AppColors.amber.withOpacity(0.4)
+                ? AppColors.amber.withValues(alpha: 0.4)
                 : scheme.outlineVariant,
             width: 1,
           ),
@@ -66,19 +66,24 @@ class MessageBubble extends StatelessWidget {
                   // Action result badge
                   if (message.actionResult != null) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       margin: const EdgeInsets.only(bottom: 8),
                       decoration: BoxDecoration(
-                        color: (message.actionResult!.success
-                                ? AppColors.bull
-                                : AppColors.bear)
-                            .withOpacity(0.12),
+                        color:
+                            (message.actionResult!.success
+                                    ? AppColors.bull
+                                    : AppColors.bear)
+                                .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: (message.actionResult!.success
-                                  ? AppColors.bull
-                                  : AppColors.bear)
-                              .withOpacity(0.3),
+                          color:
+                              (message.actionResult!.success
+                                      ? AppColors.bull
+                                      : AppColors.bear)
+                                  .withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -96,70 +101,77 @@ class MessageBubble extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            message.actionResult!.actionType.toUpperCase().replaceAll('_', ' '),
-                            style: TextStyle(
-                              fontSize: 10,
+                            message.actionResult!.actionType
+                                .toUpperCase()
+                                .replaceAll('_', ' '),
+                            style: AppFonts.body(
+                              size: 10,
+                              weight: FontWeight.w800,
+                              letterSpacing: 0.5,
                               color: message.actionResult!.success
                                   ? AppColors.bull
                                   : AppColors.bear,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
                             ),
                           ),
                         ],
                       ),
                     ),
                   ],
-            // Trading Mode attachments (only present on trading messages;
-            // Phone Control messages always carry an empty list, so this
-            // never renders outside Trading Mode).
-            if (message.attachments.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ...message.attachments.map((a) => _buildAttachment(context, a)),
-              const SizedBox(height: 8),
-            ],
-            // Message text
-            if (isUser)
-              SelectableText(
-                message.content,
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 15,
-                  height: 1.4,
-                ),
-              )
-            else
-              MarkdownBody(
-                data: message.content,
-                selectable: true,
-                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                  p: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 15,
-                    height: 1.45,
+                  // Trading Mode attachments (only present on trading messages;
+                  // Phone Control messages always carry an empty list, so this
+                  // never renders outside Trading Mode).
+                  if (message.attachments.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    ...message.attachments.map(
+                      (a) => _buildAttachment(context, a),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  // Message text
+                  if (isUser)
+                    SelectableText(
+                      message.content,
+                      style: AppFonts.body(
+                        size: 15,
+                        height: 1.4,
+                        color: scheme.onSurface,
+                      ),
+                    )
+                  else
+                    MarkdownBody(
+                      data: message.content,
+                      selectable: true,
+                      styleSheet:
+                          MarkdownStyleSheet.fromTheme(
+                            Theme.of(context),
+                          ).copyWith(
+                            p: AppFonts.body(
+                              size: 15,
+                              height: 1.45,
+                              color: scheme.onSurface,
+                            ),
+                            listBullet: AppFonts.body(
+                              size: 15,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                    ),
+                  // Timestamp
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatTime(message.timestamp),
+                    style: AppFonts.body(
+                      size: 11,
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                    ),
                   ),
-                  listBullet: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-            // Timestamp
-            const SizedBox(height: 4),
-            Text(
-              _formatTime(message.timestamp),
-              style: TextStyle(
-                fontSize: 11,
-                color: scheme.onSurface.withValues(alpha: 0.5),
+                ],
               ),
             ),
           ],
         ),
       ),
-        ],
-      ),
-    ),
-  );
+    );
   }
 
   String _formatTime(DateTime dt) {
@@ -205,7 +217,7 @@ class MessageBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(
             context,
-          ).colorScheme.onSurface.withOpacity(0.05),
+          ).colorScheme.onSurface.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -222,8 +234,8 @@ class MessageBubble extends StatelessWidget {
                 attachment.sizeBytes != null
                     ? '${attachment.name} · ${_formatSize(attachment.sizeBytes!)}'
                     : attachment.name,
-                style: TextStyle(
-                  fontSize: 12,
+                style: AppFonts.body(
+                  size: 12,
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -283,10 +295,10 @@ class MessageBubble extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: 200,
-      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05),
       child: Icon(
         Icons.broken_image_outlined,
-        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
       ),
     );
   }

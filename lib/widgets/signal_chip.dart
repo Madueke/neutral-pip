@@ -25,9 +25,9 @@ class SignalChip extends StatelessWidget {
         vertical: 3,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(AppTokens.radiusChip),
-        border: Border.all(color: color.withOpacity(0.5), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -36,9 +36,9 @@ class SignalChip extends StatelessWidget {
           const SizedBox(width: 3),
           Text(
             label,
-            style: TextStyle(
-              fontSize: AppTokens.fontSizeTiny,
-              fontWeight: FontWeight.w700,
+            style: AppFonts.body(
+              size: AppTokens.fontSizeTiny,
+              weight: FontWeight.w700,
               letterSpacing: 0.6,
               color: color,
             ),
