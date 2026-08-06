@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/chat_message.dart';
 import '../models/home_quick_action.dart';
@@ -13,6 +14,7 @@ import '../services/ai_service.dart';
 import '../services/action_handler.dart';
 import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
+import '../widgets/guide_dialog.dart';
 import '../widgets/logo_loader.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/trading_avatar.dart';
@@ -152,9 +154,33 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Opens Settings from a guide dialog (model setup, permissions).
+  Future<void> _openSettingsFromGuide() async {
+    if (!mounted) return;
+    final onOpenSettings = widget.onOpenSettings;
+    if (onOpenSettings != null) {
+      onOpenSettings();
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(
+          aiService: _aiService,
+          shizukuService: _actionHandler.shizuku,
+          screenAutomationService: _actionHandler.screenAutomation,
+          telegramService: _telegramService,
+          tradingApiService: _tradingApiService,
+          tradingModeEnabled: _tradingModeEnabled,
+        ),
+      ),
+    );
+    await _actionHandler.shizuku.checkAvailability();
+    if (mounted) setState(() {});
+  }
+
   Future<void> _saveSession() async {
     if (_messages.isEmpty) return;
-
     // Set first user message as session title if not set
     if (_sessionTitle.isEmpty) {
       final firstUserMsg = _messages.firstWhere(
@@ -181,6 +207,14 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     List<Map<String, dynamic>> attachments = const [],
   }) async {
     if (text.trim().isEmpty) return;
+
+    // Require an AI model before chatting. Trading Mode with a backend
+    // configured uses the trading API directly and does not need one.
+    final needsAiModel = !(_tradingModeEnabled && _tradingApiService.isConfigured);
+    if (needsAiModel && !_aiService.hasValidConfiguration) {
+      await showModelSetupGuide(context, openSettings: _openSettingsFromGuide);
+      return;
+    }
 
     final userMessage = ChatMessage(
       role: 'user',
@@ -279,6 +313,32 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() {
           _messages.removeAt(assistantIndex);
         });
+
+        // Every action mutates the device, so it needs the accessibility
+        // service. If it is off, guide the user instead of failing silently.
+        final serviceRunning = await _actionHandler.screenAutomation
+            .isServiceRunning();
+        if (!serviceRunning) {
+          if (mounted) {
+            setState(() {
+              _messages.add(
+                ChatMessage(
+                  role: 'assistant',
+                  content:
+                      'I need Screen Control permission to do that. Enable it '
+                      'and I will run your request right away.',
+                ),
+              );
+            });
+            _scrollToBottom();
+            await showAccessibilityGuide(
+              context,
+              _actionHandler.screenAutomation,
+            );
+          }
+          await _saveSession();
+          return;
+        }
 
         await _showTaskProgressOverlay('Starting: ${text.trim()}');
 
@@ -429,6 +489,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_isListening) {
       await _voiceService.stopListening();
       setState(() => _isListening = false);
+      return;
+    }
+
+    final micStatus = await Permission.microphone.status;
+    if (!micStatus.isGranted) {
+      if (mounted) await showMicrophoneGuide(context);
       return;
     }
 

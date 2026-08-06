@@ -156,6 +156,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     });
   }
 
+  Future<void> _skipToHome() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', true);
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+    );
+  }
+
   void _selectProvider(String provider) {
     setState(() {
       _selectedProvider = provider;
@@ -381,11 +391,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     }
   }
 
-  bool get _canProceedToModel {
-    return _isAccessibilityGranted &&
-        _isMicrophoneGranted &&
-        (!FeatureFlags.floatingOverlayEnabled || _isOverlayGranted);
-  }
+  bool get _canProceedToModel => true;
 
   @override
   Widget build(BuildContext context) {
@@ -794,7 +800,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 6),
           Text(
-            'Permissions are needed to interact with other apps.',
+            'Permissions let the AI interact with other apps. You can skip '
+            'any of them now - when a feature needs one, we will guide you '
+            'to grant it in a single tap.',
             style: AppFonts.body(
               size: 14,
               color: isDark
@@ -807,7 +815,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             child: ListView(
               physics: const BouncingScrollPhysics(),
               children: [
-                _buildSectionHeader('MANDATORY', isDark),
+                _buildSectionHeader('RECOMMENDED', isDark),
                 _buildPermissionCard(
                   'Screen Control (Accessibility)',
                   'Allows the AI to read your screen and automatically perform clicks, scrolls, and typing to execute tasks across other apps on your phone.',
@@ -894,6 +902,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: const Text(
                   'Back',
                   style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  _pageController.nextPage(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOutCubic,
+                  );
+                },
+                child: const Text(
+                  'Skip',
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
               const Spacer(),
@@ -1269,6 +1289,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: const Text(
                   'Back',
                   style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              TextButton(
+                onPressed: _isValidating ? null : _skipToHome,
+                child: const Text(
+                  'Skip for now',
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
               const Spacer(),

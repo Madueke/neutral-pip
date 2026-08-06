@@ -178,6 +178,20 @@ Answer questions, explain concepts, brainstorm, write emails/messages, and chat 
   }
 
   bool get isConfigured => _apiKey != null && _apiKey!.isNotEmpty;
+
+  /// True when a usable model configuration is saved. Local endpoints
+  /// (Ollama / LM Studio) work without an API key; cloud providers require
+  /// one. Used to decide whether to prompt the user for model setup.
+  bool get hasValidConfiguration {
+    final isLocalEndpoint =
+        _baseUrl.contains('localhost') ||
+        _baseUrl.contains('127.0.0.1') ||
+        _baseUrl.contains('10.0.2.2');
+    return _baseUrl.isNotEmpty &&
+        _model.isNotEmpty &&
+        (isLocalEndpoint || isConfigured);
+  }
+
   String get baseUrl => _baseUrl;
   String get model => _model;
   String get apiKey => _apiKey ?? '';
