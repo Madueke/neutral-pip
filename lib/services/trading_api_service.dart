@@ -113,17 +113,26 @@ class TradingApiService {
       final chartUrl = urlAttachments.isEmpty
           ? null
           : urlAttachments.first['path'] as String?;
+
+      // Get or create a session_id for memory persistence
+      final sessionId = await _getOrCreateSessionId();
+
       try {
         final response = await http
             .post(
               Uri.parse('$tradingBackendUrl/chat'),
-              headers: {'Content-Type': 'application/json'},
+              headers: {
+                ..._authHeaders, // includes Authorization: Bearer
+                'x-api-key': _aiService.apiKey,
+                'x-model': _aiService.model,
+              },
               body: jsonEncode({
                 'message': message,
                 'history': history,
                 'attachments': _attachmentMetadata(attachments),
                 if (chartUrl != null && chartUrl.isNotEmpty)
                   'chart_url': chartUrl,
+                'session_id': sessionId,
               }),
             )
             .timeout(const Duration(minutes: 5));
@@ -132,6 +141,10 @@ class TradingApiService {
           if (data is Map<String, dynamic> &&
               data['reply'] is String &&
               (data['reply'] as String).trim().isNotEmpty) {
+            // Optionally persist session_id from backend response
+            if (data['session_id'] is String) {
+              await _persistSessionId(data['session_id'] as String);
+            }
             return data['reply'] as String;
           }
         }
@@ -145,6 +158,23 @@ class TradingApiService {
 
     // No backend configured yet: use the user's existing AI key directly.
     return _directAiReply(message, history, attachments);
+  }
+
+  /// Get or create a persistent session_id for chat memory.
+  Future<String> _getOrCreateSessionId() async {
+    final prefs = await SharedPreferences.getInstance();
+    var sessionId = prefs.getString('chat_session_id');
+    if (sessionId == null || sessionId.isEmpty) {
+      sessionId = 'chat_${DateTime.now().millisecondsSinceEpoch}_${_randomSuffix()}';
+      await prefs.setString('chat_session_id', sessionId);
+    }
+    return sessionId;
+  }
+
+  /// Persist session_id returned by backend (if different).
+  Future<void> _persistSessionId(String sessionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('chat_session_id', sessionId);
   }
 
   /// Build attachment metadata for the backend: name/type/mimeType/sizeBytes
@@ -556,6 +586,12 @@ class TradingApiService {
   /// Resolved user id from the active auth session (informational; the
   /// backend derives identity from the Bearer token, not this value).
   Future<String?> getUserId() async => AuthService.instance.userId;
+
+  /// Generate a short random suffix for session IDs.
+  String _randomSuffix() {
+    final s = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    return s.substring(s.length - 6);
+  }
 
   /// SharedPreferences keys holding the legacy per-account session token
   /// returned by the backend. These are the ONLY thing persisted after a
