@@ -13,6 +13,7 @@ import '../services/ai_service.dart';
 import '../services/action_handler.dart';
 import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
+import '../widgets/logo_loader.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/trading_avatar.dart';
 import '../services/telegram_service.dart';
@@ -779,15 +780,10 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppColors.amber,
-                          ),
-                        ),
+                      const LogoLoader(
+                        size: 14,
+                        strokeWidth: 2,
+                        showGlow: false,
                       ),
                       const SizedBox(width: 10),
                       Text(

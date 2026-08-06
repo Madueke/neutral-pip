@@ -7,6 +7,7 @@ import '../config/feature_flags.dart';
 import '../config/theme.dart';
 import '../services/ai_service.dart';
 import '../services/screen_automation_service.dart';
+import '../widgets/logo_loader.dart';
 import '../widgets/trading_avatar.dart';
 import 'home_screen.dart';
 
@@ -1208,11 +1209,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         ? SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(
+                            child: LogoLoader(
+                              size: 18,
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Theme.of(context).colorScheme.onSurface,
-                              ),
+                              showGlow: false,
+                              ringColor: Theme.of(context).colorScheme.onSurface,
                             ),
                           )
                         : Icon(
@@ -1305,11 +1306,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ? const SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(
+                          child: LogoLoader(
+                            size: 22,
                             strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppColors.onAmber,
-                            ),
+                            showGlow: false,
+                            ringColor: AppColors.onAmber,
                           ),
                         )
                       : const Row(

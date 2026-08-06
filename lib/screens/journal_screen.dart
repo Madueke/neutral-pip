@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../services/trading_api_service.dart';
 import '../widgets/app_animations.dart';
+import '../widgets/logo_loader.dart';
 import '../widgets/price_text.dart';
 import '../widgets/signal_chip.dart';
 import '../widgets/stat_card.dart';
@@ -170,7 +171,7 @@ class _JournalScreenState extends State<JournalScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: LogoLoader())
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

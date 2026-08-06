@@ -3,6 +3,7 @@ import '../config/theme.dart';
 import '../services/trading_api_service.dart';
 import '../widgets/app_animations.dart';
 import '../widgets/circular_gauge.dart';
+import '../widgets/logo_loader.dart';
 import '../widgets/price_text.dart';
 import '../widgets/risk_bar.dart';
 import '../widgets/stat_card.dart';
@@ -153,7 +154,7 @@ class _RiskDashboardScreenState extends State<RiskDashboardScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: LogoLoader())
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

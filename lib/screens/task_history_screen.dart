@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../config/theme.dart';
 import '../services/task_history_logger.dart';
+import '../widgets/logo_loader.dart';
 import '../widgets/stat_card.dart';
 
 class TaskHistoryScreen extends StatefulWidget {
@@ -128,7 +129,7 @@ class _TaskHistoryScreenState extends State<TaskHistoryScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: LogoLoader())
           : _history.isEmpty
           ? _buildEmptyState(context)
           : Column(

@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import '../services/ai_service.dart';
+import '../widgets/logo_loader.dart';
 import '../services/shizuku_service.dart';
 import '../services/screen_automation_service.dart';
 import '../services/telegram_service.dart';
@@ -202,7 +203,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (context) => const Center(child: LogoLoader(size: 64)),
     );
 
     final models = await widget.aiService.fetchAvailableModels(baseUrl, apiKey);

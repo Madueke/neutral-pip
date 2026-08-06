@@ -15,6 +15,7 @@ import 'services/shizuku_service.dart';
 import 'services/chat_history_service.dart';
 import 'models/chat_message.dart';
 import 'config/theme.dart';
+import 'widgets/logo_loader.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/trading_avatar.dart';
 
@@ -579,17 +580,7 @@ class _OverlayAppState extends State<OverlayApp> {
                   ),
                   const SizedBox(width: 6),
                   _isSent
-                      ? const SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: Padding(
-                            padding: EdgeInsets.all(6),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.amber,
-                            ),
-                          ),
-                        )
+                      ? const LogoLoader(size: 28, strokeWidth: 2, showGlow: false)
                       : GestureDetector(
                           onTap: () => _sendTask(_taskController.text),
                           child: Container(
