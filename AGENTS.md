@@ -60,8 +60,20 @@ They remain because `overlay_main.dart` and the legacy dashboard still import th
 
 - **TRADING MODE: never add tap-based execution.** The trading path must not depend on `ScreenAutomationService`/`TaskExecutor`/`ActionHandler` and must never call taps/swipes. Only screenshots (`captureChartScreenshot`) are allowed there — and the current UI no longer uses it.
 - When a backend URL is set, chat posts to `{backend}/chat` with `message`, `history`, `attachments` (metadata only), and singular `chart_url` (first URL attachment wins). Any non-200 / missing `reply` falls through to the direct AI call.
-- `analyze()` is a stub returning mock data (backend endpoint `POST /analyze` is future work).
+- `analyze()` posts to `POST {backend}/analyze` with `{ user_id, symbol, timeframe }` (strategy + backtest + live chart + account state pipeline); falls back to a stub only when no backend is configured.
+- Strategy training (`POST/GET /strategy`, `POST /backtest`) and auto-execute (`GET/PATCH /settings`) hit the same backend; `GET /journal` and `GET /risk-status` are wired to the real endpoints with empty/unknown stubs when unconfigured.
+- Live market data: the Home dashboard watchlist and the Analysis screen ticker strip (`LiveTickerStrip` in `lib/widgets/trading_widgets.dart`) poll `GET /quote` on a 6s `Timer.periodic` and animate price/change updates (`AnimatedSwitcher`/`AnimatedContainer`); they fall back to curated static data when no backend is configured. The dashboard bell opens an Activity bottom sheet fed by `GET /journal` + `GET /settings`.
 - The trading UI screens (`risk_dashboard_screen.dart`, `journal_screen.dart`) use shared widgets: `SignalChip`, `PriceText`, `RiskBar`, `StatCard`, `TradingAvatar` in `lib/widgets/`.
+
+## Backend (meridian-backend, sibling directory)
+
+The backend lives at `/home/ubuntu/meridian-backend` (Node/Express 5, CommonJS, deps: axios/cors/dotenv/helmet/uuid — not a git repo). It is deployed separately to the EC2 host; the app only knows it via the Trading Backend URL setting.
+
+- Endpoints: `POST/GET /strategy`, `POST /backtest`, `GET/PATCH /settings`, `POST /analyze`, `GET /journal`, `GET /risk-status`, `POST /execute-trade-signal`, `POST /connect-account`, `GET /account-status`, `POST /disconnect-account`, `POST /chat`, `GET /quote`, `GET /chart`, `GET /health`.
+- `GET /quote?symbol=&timeframe=` returns the latest price, `change_percent` (vs N candles back, default 24), indicator snapshot (RSI/EMA/MACD/ATR), and a 32-candle `spark` for sparklines. `GET /chart?symbol=&timeframe=&limit=` returns OHLC candles. Both reuse the cached `market-data` layer so the app's 6s poll timers never hit upstream APIs directly.
+- `lib/` modules: `crypto-utils` (AES-256-GCM at rest; key from `STRATEGY_ENC_KEY` or auto-generated `data/enc_key`), `store` (atomic JSON file store), `market-data` (Yahoo chart API with browser UA + Binance fallback, 45s cache), `indicators` (EMA/RSI/MACD/ATR, dependency-free), `backtest-engine` (deterministic rule templates over real candles — never LLM-guessed stats), `risk-gate` (hard-coded gate: position size, daily loss cap, correlated exposure; an LLM can never override it), `mt5-bridge` (talks to `MT5_BACKEND_URL` bridge service), `claude` (Anthropic Messages API with `place_trade` tool + deterministic fallback when `CLAUDE_API_KEY` is unset), `analyze-pipeline` (orchestrates 1a–1g).
+- MT5 credentials are encrypted at rest, never logged, never returned in responses (only session tokens are).
+- Env: `PORT`, `CLAUDE_API_KEY`, `ANTHROPIC_MODEL`, `MT5_BACKEND_URL`, `CORS_ORIGIN`, `STRATEGY_ENC_KEY`. Runtime data lives in `data/` (gitignored).
 
 ## Persistence / files
 

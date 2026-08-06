@@ -35,19 +35,49 @@ class TradingApiService {
     await prefs.setString('trading_backend_url', tradingBackendUrl);
   }
 
-  /// Analyze a symbol on a timeframe. Future backend endpoint: POST /analyze.
+  /// Run the full backend analysis pipeline for a symbol/timeframe.
+  /// Backend endpoint: POST /analyze (strategy + backtest + live chart +
+  /// account state, with Claude reasoning). Falls back to a stub only when
+  /// no backend is configured.
   ///
   /// TRADING MODE: never add tap-based execution here.
   Future<Map<String, dynamic>> analyze(
     String symbol,
     String timeframe,
   ) async {
-    return {
-      'status': 'stub',
-      'symbol': symbol,
-      'timeframe': timeframe,
-      'summary': 'Mock analysis - backend not configured yet.',
-    };
+    if (!isConfigured) {
+      return {
+        'status': 'stub',
+        'symbol': symbol,
+        'timeframe': timeframe,
+        'summary': 'Configure a trading backend to run the analysis pipeline.',
+      };
+    }
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$tradingBackendUrl/analyze'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': await getUserId(),
+              'symbol': symbol,
+              'timeframe': timeframe,
+            }),
+          )
+          .timeout(const Duration(minutes: 2));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
   }
 
   /// Chat with the trading assistant.
@@ -180,25 +210,144 @@ class TradingApiService {
     return _aiService.sendMessage(message, isAgentMode: false);
   }
 
-  /// Fetch the trading journal. Future backend endpoint: GET /journal.
+  /// Fetch the per-user trading journal. Backend endpoint: GET /journal.
   ///
   /// TRADING MODE: never add tap-based execution here.
   Future<Map<String, dynamic>> getJournal() async {
-    return {
-      'status': 'stub',
-      'entries': <Map<String, dynamic>>[],
-    };
+    if (!isConfigured) {
+      return {'status': 'stub', 'entries': <Map<String, dynamic>>[]};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/journal').replace(
+              queryParameters: {'user_id': await getUserId()},
+            ),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'status': 'ok',
+          'entries': data is List ? data : <Map<String, dynamic>>[],
+        };
+      }
+    } catch (_) {
+      // Fall through to the empty stub below.
+    }
+    return {'status': 'stub', 'entries': <Map<String, dynamic>>[]};
   }
 
-  /// Fetch current risk status. Future backend endpoint: GET /risk-status.
+  /// Fetch current risk status. Backend endpoint: GET /risk-status.
   ///
   /// TRADING MODE: never add tap-based execution here.
   Future<Map<String, dynamic>> getRiskStatus() async {
-    return {
-      'status': 'stub',
-      'riskLevel': 'unknown',
-      'message': 'Mock risk status - backend not configured yet.',
-    };
+    if (!isConfigured) {
+      return {'status': 'stub', 'riskLevel': 'unknown'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/risk-status').replace(
+              queryParameters: {'user_id': await getUserId()},
+            ),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (_) {
+      // Fall through to the stub below.
+    }
+    return {'status': 'stub', 'riskLevel': 'unknown'};
+  }
+
+  // ---------------------------------------------------------------------------
+  // Live market data
+  //
+  //   GET /quote  latest price, indicator snapshot and a short sparkline
+  //   GET /chart  OHLC candles for chart rendering
+  //
+  // Both hit the backend's cached public market-data layer (Yahoo + Binance
+  // fallback); the app never talks to upstream chart APIs directly.
+  // ---------------------------------------------------------------------------
+
+  /// Latest quote + indicators for a symbol. Backend endpoint:
+  /// GET /quote?symbol=&timeframe=. Returns
+  /// { status: 'ok', symbol, last_close, change_percent, rsi_14, ema20,
+  ///   ema50, macd, macd_histogram, atr_14, spark: [[o,h,l,c], ...], at } or
+  /// { status: 'error', message } when no backend is configured.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> getQuote(
+    String symbol, {
+    String timeframe = 'M15',
+  }) async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/quote').replace(
+              queryParameters: {'symbol': symbol, 'timeframe': timeframe},
+            ),
+          )
+          .timeout(const Duration(seconds: 10));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// OHLC candles for a symbol/timeframe. Backend endpoint:
+  /// GET /chart?symbol=&timeframe=&limit=. Returns
+  /// { status: 'ok', symbol, timeframe, source, candles: [...] }.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> getChart(
+    String symbol, {
+    String timeframe = 'M15',
+    int limit = 120,
+  }) async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/chart').replace(
+              queryParameters: {
+                'symbol': symbol,
+                'timeframe': timeframe,
+                'limit': '$limit',
+              },
+            ),
+          )
+          .timeout(const Duration(seconds: 10));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
   }
 
   /// Submit a trade signal for execution. Future backend endpoint:
@@ -216,6 +365,171 @@ class TradingApiService {
       'message': 'Mock trade signal handler - backend not configured yet.',
       'signal': signal,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Strategy training & auto-execute settings
+  //
+  //   POST   /strategy        save a versioned, encrypted strategy profile
+  //   GET    /strategy        current profile + latest backtest result
+  //   POST   /backtest        re-run the backtest explicitly
+  //   GET    /settings        auto_execute flag + risk limits
+  //   PATCH  /settings        update auto_execute
+  //
+  // The source of truth for strategy data is the backend; nothing sensitive
+  // is persisted client-side beyond what this screen needs to render.
+  // ---------------------------------------------------------------------------
+
+  /// Stable client-generated user id (also used by account endpoints).
+  Future<String> getUserId() => _userId();
+
+  /// Fetch the current strategy profile + latest backtest result.
+  /// Returns { status: 'ok', profile, version, backtest } when found,
+  /// { status: 'not_found' } when the user has no profile yet, and
+  /// { status: 'error', message } on failures.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> getStrategy() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/strategy').replace(
+              queryParameters: {'user_id': await getUserId()},
+            ),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      if (response.statusCode == 404) return {'status': 'not_found'};
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+    return {'status': 'error', 'message': 'Unexpected backend response'};
+  }
+
+  /// Save (a new version of) the strategy profile. Backend endpoint:
+  /// POST /strategy. The backend re-runs the backtest automatically.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> saveStrategy(
+    Map<String, dynamic> profile,
+  ) async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$tradingBackendUrl/strategy'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': await getUserId(), ...profile}),
+          )
+          .timeout(const Duration(minutes: 2));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Explicitly re-run the backtest. Backend endpoint: POST /backtest.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> runBacktest() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$tradingBackendUrl/backtest'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'user_id': await getUserId()}),
+          )
+          .timeout(const Duration(minutes: 2));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {'status': 'error', 'message': 'Backend returned HTTP ${response.statusCode}'};
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Current auto-execute flag + risk limits. Backend endpoint:
+  /// GET /settings. Returns { auto_execute, risk_limits }.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> getSettings() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'auto_execute': false, 'risk_limits': null};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/settings').replace(
+              queryParameters: {'user_id': await getUserId()},
+            ),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (_) {
+      // Fall through to the safe default below.
+    }
+    return {'status': 'error', 'auto_execute': false, 'risk_limits': null};
+  }
+
+  /// Update the auto-execute flag. Backend endpoint: PATCH /settings.
+  ///
+  /// TRADING MODE: never add tap-based execution here. Execution happens
+  /// server-side only, inside the user's configured risk limits.
+  Future<Map<String, dynamic>> updateSettings({
+    required bool autoExecute,
+  }) async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$tradingBackendUrl/settings'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': await getUserId(),
+              'auto_execute': autoExecute,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
   }
 
   // ---------------------------------------------------------------------------

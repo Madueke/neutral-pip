@@ -7,6 +7,7 @@ import '../widgets/logo_loader.dart';
 import '../services/telegram_service.dart';
 import '../services/trading_api_service.dart';
 import 'connect_accounts_screen.dart';
+import 'strategy_training_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../config/feature_flags.dart';
@@ -44,6 +45,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _floatingIconEnabled = false;
   bool _isOverlayPermissionGranted = false;
 
+  // Auto-Execute (Trading Mode): server state + risk limits from strategy.
+  bool _autoExecute = false;
+  bool _autoExecuteUpdating = false;
+  Map<String, dynamic>? _riskLimits;
+
   final Map<String, PermissionStatus> _permissions = {};
 
   @override
@@ -79,6 +85,103 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (FeatureFlags.floatingOverlayEnabled) {
       _checkOverlayStatus();
     }
+    _loadAutoExecute();
+  }
+
+  /// Load the auto-execute flag + risk limits from the trading backend so
+  /// the toggle shows the current server state and the applicable limits.
+  Future<void> _loadAutoExecute() async {
+    final data = await widget.tradingApiService.getSettings();
+    if (!mounted) return;
+    setState(() {
+      _autoExecute = data['auto_execute'] == true;
+      _riskLimits = data['risk_limits'] is Map<String, dynamic>
+          ? data['risk_limits'] as Map<String, dynamic>
+          : null;
+    });
+  }
+
+  String get _riskLimitsSubtitle {
+    final limits = _riskLimits;
+    if (limits != null) {
+      final risk = limits['max_risk_percent'];
+      final daily = limits['max_daily_loss_percent'];
+      return 'Risk limits: $risk% per trade · $daily% daily loss. '
+          'Configured in Train My Strategy.';
+    }
+    return 'No risk limits saved yet. Set them in Train My Strategy first.';
+  }
+
+  /// Enabling auto-execute requires an explicit confirmation (same gate as
+  /// connecting a real MT5 account). The toggle stays off until confirmed.
+  Future<void> _onAutoExecuteChanged(bool value) async {
+    if (value) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surfaceDark,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+          ),
+          title: const Text('Enable auto-execution?'),
+          content: const Text(
+            'I understand the agent will place real trades on my connected '
+            'MT5 account without asking me first, within my configured risk '
+            'limits.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.amber),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('I Understand'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return; // stays off
+    }
+
+    setState(() {
+      _autoExecute = value;
+      _autoExecuteUpdating = true;
+    });
+    final response = await widget.tradingApiService.updateSettings(
+      autoExecute: value,
+    );
+    if (!mounted) return;
+    setState(() => _autoExecuteUpdating = false);
+    if (response['status'] != 'ok') {
+      setState(() => _autoExecute = !value); // revert on failure
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.bear,
+          content: Text(
+            'Could not update: ${response['message'] ?? 'unknown error'}',
+          ),
+        ),
+      );
+      return;
+    }
+    if (response['risk_limits'] is Map<String, dynamic>) {
+      setState(() {
+        _riskLimits = response['risk_limits'] as Map<String, dynamic>;
+      });
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.bullDim,
+        content: Text(
+          value
+              ? 'Auto-execute enabled. Trades are placed server-side within '
+                    'your risk limits.'
+              : 'Auto-execute disabled.',
+        ),
+      ),
+    );
   }
 
   Future<void> _checkOverlayStatus() async {
@@ -848,6 +951,48 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   );
                 },
+              ),
+              const Divider(
+                height: AppTokens.spaceXl,
+                color: AppColors.borderDark,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.school_outlined, color: AppColors.amber),
+                title: const Text('Train My Strategy'),
+                subtitle: const Text(
+                  'Define rules, indicators & risk limits, then backtest',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StrategyTrainingScreen(
+                        tradingApiService: widget.tradingApiService,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+
+          // 7b. Auto-Execute Card (Trading Mode)
+          _buildSettingsCard(
+            icon: Icons.bolt_rounded,
+            title: 'Auto-Execute',
+            subtitle: 'Server-side trade execution within your risk limits',
+            isDark: isDark,
+            children: [
+              SwitchListTile(
+                title: const Text('Let the agent execute trades automatically.'),
+                subtitle: Text(_riskLimitsSubtitle),
+                value: _autoExecute,
+                onChanged: _autoExecuteUpdating
+                    ? null
+                    : (value) => _onAutoExecuteChanged(value),
+                contentPadding: EdgeInsets.zero,
               ),
             ],
           ),

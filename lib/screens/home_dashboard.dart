@@ -31,9 +31,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
   List<Map<String, dynamic>> _recentAnalyses = const [];
   bool _loading = true;
 
+  // Live market data: latest quote per watchlist symbol, refreshed by a
+  // short poll timer when a trading backend is configured. When no backend
+  // is configured the watchlist falls back to the curated static data.
+  Timer? _quoteTimer;
+  final Map<String, Map<String, dynamic>> _liveQuotes = {};
+  bool _hasUnreadActivity = true;
+
+  static const Duration _quotePollInterval = Duration(seconds: 6);
+
   static const List<_WatchItem> _watchlist = [
     _WatchItem(
-      'BTC/USDT',
+      'BTC/USD',
+      'BTCUSD',
       108412.0,
       2.34,
       [
@@ -48,7 +58,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       ],
     ),
     _WatchItem(
-      'ETH/USDT',
+      'ETH/USD',
+      'ETHUSD',
       3892.5,
       -0.87,
       [
@@ -64,6 +75,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     ),
     _WatchItem(
       'XAU/USD',
+      'XAUUSD',
       2418.5,
       0.42,
       [
@@ -78,6 +90,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       ],
     ),
     _WatchItem(
+      'NAS100',
       'NAS100',
       21482.0,
       -0.31,
@@ -98,6 +111,27 @@ class _HomeDashboardState extends State<HomeDashboard> {
   void initState() {
     super.initState();
     _load();
+    _refreshQuotes();
+    _quoteTimer = Timer.periodic(_quotePollInterval, (_) => _refreshQuotes());
+  }
+
+  @override
+  void dispose() {
+    _quoteTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshQuotes() async {
+    // No-op until a trading backend is configured; the periodic timer keeps
+    // checking so quotes start flowing as soon as the user saves one.
+    if (!widget.tradingApiService.isConfigured) return;
+    for (final item in _watchlist) {
+      final quote = await widget.tradingApiService.getQuote(item.symbol);
+      if (!mounted) return;
+      if (quote['status'] == 'ok') {
+        setState(() => _liveQuotes[item.symbol] = quote);
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -116,6 +150,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return 'Good evening';
   }
 
+  /// Open the activity sheet (journal entries + auto-execute status) and
+  /// clear the unread dot.
+  Future<void> _openActivitySheet() async {
+    setState(() => _hasUnreadActivity = false);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ActivitySheet(
+        tradingApiService: widget.tradingApiService,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -130,11 +178,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
           children: [
             _buildGlows(isDark),
             ListView(
+              // The shell reserves space for the floating nav, so the list
+              // only needs a small closing gap of its own.
               padding: const EdgeInsets.fromLTRB(
                 AppTokens.spaceLg,
                 AppTokens.spaceLg,
                 AppTokens.spaceLg,
-                108,
+                AppTokens.spaceXl,
               ),
               children: [
                 FadeInUp(child: _buildHeader(isDark, secondary)),
@@ -151,7 +201,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 const SizedBox(height: AppTokens.spaceXl),
                 FadeInUp(
                   delay: const Duration(milliseconds: 200),
-                  child: _buildSectionTitle('Watchlist', secondary),
+                  child: _buildWatchlistTitle(secondary),
                 ),
                 const SizedBox(height: AppTokens.spaceMd),
                 FadeInUp(
@@ -247,8 +297,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
           clipBehavior: Clip.none,
           children: [
             IconButton.filledTonal(
-              onPressed: () {},
+              onPressed: _openActivitySheet,
               icon: const Icon(Icons.notifications_rounded, size: 20),
+              tooltip: 'Activity',
               style: IconButton.styleFrom(
                 backgroundColor:
                     isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
@@ -256,18 +307,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
               ),
             ),
-            Positioned(
-              top: 6,
-              right: 6,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppColors.amber,
-                  shape: BoxShape.circle,
+            if (_hasUnreadActivity)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: AppColors.amber,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
         const SizedBox(width: AppTokens.spaceSm),
@@ -405,8 +457,35 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  Widget _buildWatchlistTitle(Color secondary) {
+    final live = _liveQuotes.isNotEmpty;
+    return Row(
+      children: [
+        Expanded(
+          child: _buildSectionTitle(
+            live ? 'Live markets' : 'Watchlist',
+            secondary,
+          ),
+        ),
+        if (live) ...[
+          _PulseDot(),
+          const SizedBox(width: 6),
+          Text(
+            'Updating live',
+            style: AppFonts.body(
+              size: AppTokens.fontSizeTiny,
+              weight: FontWeight.w700,
+              color: AppColors.bull,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildWatchlist(bool isDark) {
     final border = isDark ? AppColors.borderDark : AppColors.borderLight;
+    final live = _liveQuotes.isNotEmpty;
     return Container(
       decoration: BoxDecoration(
         color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
@@ -422,57 +501,126 @@ class _HomeDashboardState extends State<HomeDashboard> {
             else
               const SizedBox.shrink(),
           for (final item in _watchlist)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppTokens.spaceLg,
-                vertical: AppTokens.spaceMd,
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 92,
-                    child: Text(
-                      item.pair,
-                      style: AppFonts.heading(
-                        size: 13,
-                        weight: FontWeight.w600,
-                      ),
-                    ),
+            _buildWatchRow(item, live, isDark),
+        ],
+      ),
+    );
+  }
+
+  /// One watchlist row. When the backend has delivered a live quote for the
+  /// symbol it renders the fresh price/change/candles with animated
+  /// transitions; otherwise the curated static snapshot is shown.
+  Widget _buildWatchRow(_WatchItem item, bool live, bool isDark) {
+    final quote = live ? _liveQuotes[item.symbol] : null;
+    final price = quote != null
+        ? ((quote['last_close'] as num?) ?? item.price).toDouble()
+        : item.price;
+    final change = quote != null
+        ? ((quote['change_percent'] as num?) ?? item.change).toDouble()
+        : item.change;
+    final spark = quote != null ? quote['spark'] : null;
+    final List<List<double>> candles =
+        spark is List && spark.isNotEmpty
+            ? spark
+                  .map(
+                    (c) => (c as List)
+                        .map((v) => (v as num).toDouble())
+                        .toList(),
+                  )
+                  .toList()
+            : item.candles;
+    final changeUp = change >= 0;
+    final changeColor = changeUp ? AppColors.bull : AppColors.bear;
+    final priceText = _fmtPrice(price);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.spaceLg,
+        vertical: AppTokens.spaceMd,
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.pair,
+                  style: AppFonts.heading(
+                    size: 13,
+                    weight: FontWeight.w600,
                   ),
-                  Expanded(
-                    child: CandleSparkline(candles: item.candles, height: 34),
-                  ),
-                  const SizedBox(width: AppTokens.spaceMd),
-                  SizedBox(
-                    width: 82,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          _fmtPrice(item.price),
-                          style: AppFonts.body(
-                            size: AppTokens.captionSize,
-                            weight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${item.change >= 0 ? '+' : ''}'
-                          '${item.change.toStringAsFixed(2)}%',
-                          style: AppFonts.body(
-                            size: AppTokens.fontSizeTiny,
-                            weight: FontWeight.w700,
-                            color: item.change >= 0
-                                ? AppColors.bull
-                                : AppColors.bear,
-                          ),
-                        ),
-                      ],
+                ),
+                if (live) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'LIVE',
+                    style: AppFonts.body(
+                      size: AppTokens.fontSizeTiny,
+                      weight: FontWeight.w700,
+                      color: AppColors.bull,
+                      letterSpacing: 0.6,
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
+          ),
+          Expanded(
+            child: CandleSparkline(candles: candles, height: 34),
+          ),
+          const SizedBox(width: AppTokens.spaceMd),
+          SizedBox(
+            width: 82,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 450),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.25),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: Text(
+                    priceText,
+                    key: ValueKey('price_${item.symbol}_$priceText'),
+                    style: AppFonts.body(
+                      size: AppTokens.captionSize,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: changeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusPill),
+                  ),
+                  child: Text(
+                    '${change >= 0 ? '+' : ''}'
+                    '${change.toStringAsFixed(2)}%',
+                    style: AppFonts.body(
+                      size: AppTokens.fontSizeTiny,
+                      weight: FontWeight.w700,
+                      color: changeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -886,9 +1034,309 @@ class _QuickAction extends StatelessWidget {
 
 class _WatchItem {
   final String pair;
+  final String symbol;
   final double price;
   final double change;
   final List<List<double>> candles;
 
-  const _WatchItem(this.pair, this.price, this.change, this.candles);
+  const _WatchItem(this.pair, this.symbol, this.price, this.change, this.candles);
+}
+
+/// Bottom sheet surfacing recent activity: journal entries from the trading
+/// backend plus the auto-execute setting. Read-only view of backend state.
+class _ActivitySheet extends StatefulWidget {
+  final TradingApiService tradingApiService;
+
+  const _ActivitySheet({required this.tradingApiService});
+
+  @override
+  State<_ActivitySheet> createState() => _ActivitySheetState();
+}
+
+class _ActivitySheetState extends State<_ActivitySheet> {
+  List<Map<String, dynamic>> _entries = const [];
+  bool _loading = true;
+  bool _autoExecute = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final journal = await widget.tradingApiService.getJournal();
+    final settings = await widget.tradingApiService.getSettings();
+    if (!mounted) return;
+    setState(() {
+      final raw = journal['entries'];
+      _entries = raw is List
+          ? raw.whereType<Map<String, dynamic>>().toList()
+          : const [];
+      _autoExecute = settings['auto_execute'] == true;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.secondaryBgDark : AppColors.bgLight,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppTokens.radiusCardLg),
+        ),
+        border: Border.all(
+          color: isDark ? AppColors.borderDark : AppColors.borderLight,
+        ),
+      ),
+      padding: EdgeInsets.only(bottom: bottom + AppTokens.spaceXl),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: AppTokens.spaceMd),
+              decoration: BoxDecoration(
+                color: (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)
+                    .withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(AppTokens.radiusPill),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppTokens.spaceXl,
+              AppTokens.spaceLg,
+              AppTokens.spaceXl,
+              AppTokens.spaceMd,
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'Activity',
+                  style: AppFonts.heading(
+                    size: AppTokens.titleSize,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.spaceMd,
+                    vertical: AppTokens.spaceXs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (_autoExecute ? AppColors.amber : AppColors.info)
+                        .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusPill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _autoExecute
+                            ? Icons.bolt_rounded
+                            : Icons.shield_outlined,
+                        size: 14,
+                        color: _autoExecute ? AppColors.amber : AppColors.info,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _autoExecute ? 'Auto-execute on' : 'Auto-execute off',
+                        style: AppFonts.body(
+                          size: AppTokens.fontSizeTiny,
+                          weight: FontWeight.w700,
+                          color:
+                              _autoExecute ? AppColors.amber : AppColors.info,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: (isDark ? AppColors.borderDark : AppColors.borderLight)),
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+              ),
+              child: _loading
+                  ? Padding(
+                      padding: const EdgeInsets.all(AppTokens.spaceXl),
+                      child: Column(
+                        children: const [
+                          ShimmerBox(height: 56),
+                          SizedBox(height: AppTokens.spaceSm),
+                          ShimmerBox(height: 56),
+                          SizedBox(height: AppTokens.spaceSm),
+                          ShimmerBox(height: 56),
+                        ],
+                      ),
+                    )
+                  : _entries.isEmpty
+                      ? _ActivityEmpty(isDark: isDark)
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppTokens.spaceSm,
+                          ),
+                          itemCount: _entries.length,
+                          separatorBuilder: (_, _) => Divider(
+                            height: 1,
+                            indent: AppTokens.spaceXl,
+                            endIndent: AppTokens.spaceXl,
+                            color: (isDark
+                                    ? AppColors.borderDark
+                                    : AppColors.borderLight)
+                                .withValues(alpha: 0.6),
+                          ),
+                          itemBuilder: (context, index) =>
+                              _ActivityTile(entry: _entries[index]),
+                        ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityTile extends StatelessWidget {
+  final Map<String, dynamic> entry;
+
+  const _ActivityTile({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    final symbol = entry['symbol']?.toString() ?? 'Market';
+    final timeframe = entry['timeframe']?.toString() ?? '';
+    final action = entry['action_taken'];
+    final executed = action is Map && action['executed'] == true;
+    final analysis = entry['analysis'];
+    final snippet = analysis is Map
+        ? (analysis['chart_summary']?.toString() ??
+            analysis['reasoning_text']?.toString() ??
+            '')
+        : '';
+
+    return ListTile(
+      dense: true,
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: (executed ? AppColors.amber : AppColors.info)
+              .withValues(alpha: 0.13),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(
+          executed ? Icons.bolt_rounded : Icons.insights_rounded,
+          size: 18,
+          color: executed ? AppColors.amber : AppColors.info,
+        ),
+      ),
+      title: Text(
+        executed ? 'Trade executed' : 'Analysis',
+        style: AppFonts.body(
+          size: AppTokens.bodySize,
+          weight: FontWeight.w700,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            snippet.isNotEmpty ? snippet : '${symbol.trim()} ${timeframe.trim()}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppFonts.body(size: AppTokens.captionSize, color: secondary),
+          ),
+        ],
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _pairLabel(symbol, timeframe),
+            style: AppFonts.body(
+              size: AppTokens.fontSizeTiny,
+              weight: FontWeight.w700,
+              color: executed ? AppColors.amber : secondary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            _relativeTime(entry['timestamp']?.toString() ?? ''),
+            style: AppFonts.body(size: AppTokens.fontSizeTiny, color: secondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _pairLabel(String symbol, String timeframe) {
+    final s = symbol.trim();
+    final t = timeframe.trim();
+    if (s.isEmpty && t.isEmpty) return '';
+    if (s.isEmpty) return t;
+    if (t.isEmpty) return s;
+    return '$s $t';
+  }
+
+  static String _relativeTime(String iso) {
+    final parsed = DateTime.tryParse(iso);
+    if (parsed == null) return '';
+    final diff = DateTime.now().difference(parsed.toLocal());
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+}
+
+class _ActivityEmpty extends StatelessWidget {
+  final bool isDark;
+
+  const _ActivityEmpty({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final secondary =
+        isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
+    return Padding(
+      padding: const EdgeInsets.all(AppTokens.spaceXxl),
+      child: Column(
+        children: [
+          Icon(
+            Icons.notifications_none_rounded,
+            size: 32,
+            color: secondary.withValues(alpha: 0.7),
+          ),
+          const SizedBox(height: AppTokens.spaceMd),
+          Text(
+            'No activity yet',
+            style: AppFonts.heading(size: 14, weight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Runs from the Analysis screen will show up here.',
+            textAlign: TextAlign.center,
+            style: AppFonts.body(size: AppTokens.captionSize, color: secondary),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -81,37 +81,50 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  /// Vertical space the floating nav occupies plus a breathing gap, so tab
+  /// content (notably the chat input bar) is never covered by the nav.
+  static const double _navReserve =
+      AppTokens.spaceLg + 68 + AppTokens.spaceLg;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      // Keep the floating nav pinned to the bottom when the keyboard opens;
+      // each tab's own Scaffold handles the keyboard inset for its content.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Positioned.fill(
-            child: IndexedStack(
-              index: _tabIndex,
-              children: [
-                HomeDashboard(
-                  tradingApiService: _tradingApiService,
-                  onQuickAction: _handleQuickAction,
-                ),
-                HomeScreen(
-                  key: _homeKey,
-                  aiService: _aiService,
-                  voiceService: _voiceService,
-                  notificationService: _notificationService,
-                  telegramService: _telegramService,
-                  tradingApiService: _tradingApiService,
-                  onOpenSettings: () => _goToTab(4),
-                ),
-                JournalScreen(tradingApiService: _tradingApiService),
-                RiskDashboardScreen(tradingApiService: _tradingApiService),
-                SettingsScreen(
-                  aiService: _aiService,
-                  telegramService: _telegramService,
-                  tradingApiService: _tradingApiService,
-                ),
-              ],
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: _navReserve + MediaQuery.paddingOf(context).bottom,
+              ),
+              child: IndexedStack(
+                index: _tabIndex,
+                children: [
+                  HomeDashboard(
+                    tradingApiService: _tradingApiService,
+                    onQuickAction: _handleQuickAction,
+                  ),
+                  HomeScreen(
+                    key: _homeKey,
+                    aiService: _aiService,
+                    voiceService: _voiceService,
+                    notificationService: _notificationService,
+                    telegramService: _telegramService,
+                    tradingApiService: _tradingApiService,
+                    onOpenSettings: () => _goToTab(4),
+                  ),
+                  JournalScreen(tradingApiService: _tradingApiService),
+                  RiskDashboardScreen(tradingApiService: _tradingApiService),
+                  SettingsScreen(
+                    aiService: _aiService,
+                    telegramService: _telegramService,
+                    tradingApiService: _tradingApiService,
+                  ),
+                ],
+              ),
             ),
           ),
           _buildFloatingNav(context),

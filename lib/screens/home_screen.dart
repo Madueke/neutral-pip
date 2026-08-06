@@ -15,6 +15,7 @@ import '../widgets/guide_dialog.dart';
 import '../widgets/logo_loader.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/trading_avatar.dart';
+import '../widgets/trading_widgets.dart';
 import '../services/telegram_service.dart';
 import '../services/chat_history_service.dart';
 import '../services/notification_service.dart';
@@ -79,6 +80,15 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   Timer? _overlayHistoryTimer;
+
+  static const List<LiveTickerSymbol> _tickerSymbols = [
+    LiveTickerSymbol('BTCUSD', 'BTC/USD'),
+    LiveTickerSymbol('ETHUSD', 'ETH/USD'),
+    LiveTickerSymbol('XAUUSD', 'XAU/USD'),
+    LiveTickerSymbol('EURUSD', 'EUR/USD'),
+    LiveTickerSymbol('NAS100', 'NAS100'),
+    LiveTickerSymbol('XAGUSD', 'XAG/USD'),
+  ];
 
   @override
   void initState() {
@@ -570,6 +580,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
               // Trading quick actions
               _buildTradingActionBar(),
+
+              // Live market ticker (hidden until a backend quote arrives)
+              LiveTickerStrip(
+                tradingApiService: _tradingApiService,
+                symbols: _tickerSymbols,
+              ),
 
               // API key warning banner
               if (!_aiService.isConfigured && !_tradingApiService.isConfigured)
