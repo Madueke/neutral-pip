@@ -137,11 +137,12 @@ class _AppShellState extends State<AppShell> {
   Widget _buildFloatingNav(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Positioned(
       left: AppTokens.spaceXl,
       right: AppTokens.spaceXl,
-      bottom: AppTokens.spaceLg,
+      bottom: AppTokens.spaceLg + bottomInset,
       child: Container(
         height: 68,
         decoration: BoxDecoration(
