@@ -31,7 +31,8 @@
         android:label="Neutral Pip"
         android:name="${applicationName}"
         android:icon="@mipmap/splash_icon"
-        android:roundIcon="@mipmap/splash_icon">
+        android:roundIcon="@mipmap/splash_icon"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"

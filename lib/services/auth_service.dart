@@ -7,6 +7,8 @@ import 'package:passkeys/exceptions.dart';
 import 'package:passkeys/types.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/app_config.dart';
+
 /// Trading Mode authentication service.
 ///
 /// Passkeys (WebAuthn) are the primary credential, issued by the backend.
@@ -72,13 +74,13 @@ class AuthService {
     _pinHash = await _storage.read(key: _pinHashKey);
     _pinSalt = await _storage.read(key: _pinSaltKey);
     final prefs = await SharedPreferences.getInstance();
-    _backendUrl = prefs.getString(_backendUrlPrefKey) ?? '';
+    _backendUrl = prefs.getString(_backendUrlPrefKey) ?? defaultTradingBackendUrl;
   }
 
   /// Refresh the backend URL from prefs (called after Settings changes).
   Future<void> reloadBackendUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    _backendUrl = prefs.getString(_backendUrlPrefKey) ?? '';
+    _backendUrl = prefs.getString(_backendUrlPrefKey) ?? defaultTradingBackendUrl;
   }
 
   /// Validate the stored session against GET /auth/session. Returns the user

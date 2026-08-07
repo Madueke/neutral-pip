@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/theme.dart';
+import '../config/app_config.dart';
 import '../services/auth_service.dart';
 import 'app_shell.dart';
 import 'auth_screen.dart';
@@ -42,7 +43,8 @@ class _AuthGateState extends State<AuthGate> {
     await _auth.init();
     final prefs = await SharedPreferences.getInstance();
     final backendConfigured =
-        (prefs.getString('trading_backend_url') ?? '').isNotEmpty;
+        (prefs.getString('trading_backend_url') ?? defaultTradingBackendUrl)
+            .isNotEmpty;
     if (!backendConfigured) {
       if (mounted) setState(() => _state = _AuthState.shell);
       return;

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 import 'auth_service.dart';
 import '../models/chat_message.dart';
+import '../config/app_config.dart';
 
 /// Standalone client for the Trading Mode backend.
 ///
@@ -19,14 +20,16 @@ class TradingApiService {
   String _tradingBackendUrl = '';
 
   /// Configurable backend base URL (SharedPreferences key:
-  /// trading_backend_url). Empty until the user sets it in Settings.
+  /// trading_backend_url). Defaults to [defaultTradingBackendUrl] when the
+  /// user hasn't set one, so a fresh install works without configuration.
   String get tradingBackendUrl => _tradingBackendUrl;
 
   bool get isConfigured => _tradingBackendUrl.isNotEmpty;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _tradingBackendUrl = prefs.getString('trading_backend_url') ?? '';
+    _tradingBackendUrl =
+        prefs.getString('trading_backend_url') ?? defaultTradingBackendUrl;
     // Keep the auth service in sync (session state + backend URL) so every
     // request below can attach the Bearer token.
     await AuthService.instance.init();
