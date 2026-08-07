@@ -710,7 +710,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(
-                          'No AI model configured. Tap Settings to add details.',
+                          'No AI or trading backend configured. Tap Settings '
+                          'to set one up.',
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,

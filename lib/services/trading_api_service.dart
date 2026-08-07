@@ -121,11 +121,10 @@ class TradingApiService {
         final response = await http
             .post(
               Uri.parse('$tradingBackendUrl/chat'),
-              headers: {
-                ..._authHeaders, // includes Authorization: Bearer
-                'x-api-key': _aiService.apiKey,
-                'x-model': _aiService.model,
-              },
+              // The backend resolves identity from the session token and
+              // serves chat through its own Hermes instance, so no user
+              // AI key/model headers are forwarded.
+              headers: _authHeaders, // includes Authorization: Bearer
               body: jsonEncode({
                 'message': message,
                 'history': history,

@@ -1015,7 +1015,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'Select a provider to prefill API details automatically.',
+            'Select a provider to prefill API details automatically. This '
+            'powers chat as a fallback — when a trading backend is connected, '
+            'it uses the backend\'s own AI.',
             style: AppFonts.body(
               size: 13,
               color: isDark

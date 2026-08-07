@@ -199,8 +199,8 @@ Future<void> showAccessibilityGuide(
   );
 }
 
-/// Guide for configuring the AI model. Shown when the user tries to chat
-/// before any model has been set up.
+/// Guide for configuring the fallback AI model. Shown when the user tries to
+/// chat before any backend or model has been set up.
 Future<void> showModelSetupGuide(
   BuildContext context, {
   required VoidCallback openSettings,
@@ -210,13 +210,15 @@ Future<void> showModelSetupGuide(
     icon: Icons.smart_toy_rounded,
     title: 'Set Up Your AI Model',
     description:
-        'You need to connect an AI model before chatting. It takes about a '
-        'minute and works with any OpenAI-compatible provider.',
+        'Chat needs either a connected trading backend or a fallback AI '
+        'model. It takes about a minute and works with any OpenAI-compatible '
+        'provider.',
     steps: const [
-      'Open Settings and scroll to the "AI & Agent" section.',
+      'Open Settings and scroll to the "Fallback AI" section.',
       'Pick a provider (DeepSeek, OpenRouter, NVIDIA, Groq...) or enter a '
           'custom endpoint.',
-      'Paste your API key and set the model name.',
+      'Paste your API key and set the model name — used as a fallback when '
+          'no trading backend is connected.',
       'Tap Save to validate the connection, then come back and chat.',
     ],
     actionLabel: 'Open Settings',

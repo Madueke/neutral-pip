@@ -723,12 +723,15 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
 
-          // 2. AI Engine Config Card
-          _sectionLabel('AI Model'),
+          // 2. AI Engine Config Card — fallback AI, used only when the
+          // trading backend is unreachable or not connected (the backend
+          // serves chat through its own Hermes instance).
+          _sectionLabel('Fallback AI'),
           _buildSettingsCard(
             icon: Icons.psychology_outlined,
-            title: 'AI Engine Configuration',
-            subtitle: 'Supports any OpenAI-compatible API endpoint',
+            title: 'Fallback AI Configuration',
+            subtitle:
+                'Used only when the trading backend is offline or not connected',
             isDark: isDark,
             children: [
               TextField(
@@ -871,6 +874,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'When a trading backend is connected, chat and analysis run '
+                'through the backend\'s AI. This key is only used as a '
+                'fallback when the backend is unreachable or not connected.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
