@@ -7,6 +7,7 @@ import 'config/theme.dart';
 import 'screens/auth_gate.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/splash_screen.dart';
+import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
 import 'overlay_main.dart';
 
@@ -55,6 +56,9 @@ void Function(String task)? onOverlayTask;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DeepLinkService.init();
+
+  // Initialize AuthService to load backend URL from prefs (with fallback to default)
+  await AuthService.instance.init();
 
   if (FeatureFlags.floatingOverlayEnabled) {
     FlutterOverlayWindow.overlayListener.listen((event) {
