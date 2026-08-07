@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:ui';
+import '../config/app_config.dart';
 import '../config/theme.dart';
 import '../services/ai_service.dart';
 import '../widgets/logo_loader.dart';
@@ -23,6 +24,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   int _currentStep = 0;
   bool _isMicrophoneGranted = false;
   bool _isNotificationsGranted = false;
+  bool _backendConfigured = false;
 
   // AI config states
   String _selectedProvider = 'deepseek';
@@ -42,7 +44,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadAiDefaults();
+    _loadBackendConfig();
     _checkPermissions();
+  }
+
+  Future<void> _loadBackendConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedBackend = prefs.getString('trading_backend_url') ?? '';
+    final backendConfigured =
+        storedBackend.trim().isNotEmpty || defaultTradingBackendUrl.isNotEmpty;
+    if (mounted && backendConfigured != _backendConfigured) {
+      setState(() => _backendConfigured = backendConfigured);
+    }
   }
 
   Future<void> _loadAiDefaults() async {
@@ -371,7 +384,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     children: [
                       _buildWelcomePage(isDark),
                       _buildPermissionsPage(isDark),
-                      _buildModelSetupPage(isDark),
+                      if (!_backendConfigured) _buildModelSetupPage(isDark),
                     ],
                   ),
                 ),
@@ -435,11 +448,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildAnimatedStepper(bool isDark) {
+    final stepCount = _backendConfigured ? 2 : 3;
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(3, (index) {
+          children: List.generate(stepCount, (index) {
             final isActive = _currentStep == index;
             final isCompleted = _currentStep > index;
 
@@ -478,7 +492,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           children: [
             _buildStepperLabel(0, 'Welcome'),
             _buildStepperLabel(1, 'Permissions'),
-            _buildStepperLabel(2, 'AI Setup'),
+            if (!_backendConfigured) _buildStepperLabel(2, 'AI Setup'),
           ],
         ),
       ],
@@ -799,10 +813,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
               TextButton(
                 onPressed: () {
-                  _pageController.nextPage(
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeOutCubic,
-                  );
+                  if (_backendConfigured) {
+                    _skipToHome();
+                  } else {
+                    _pageController.nextPage(
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOutCubic,
+                    );
+                  }
                 },
                 child: const Text(
                   'Skip',
@@ -832,10 +850,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: ElevatedButton(
                   onPressed: _canProceedToModel
                       ? () {
-                          _pageController.nextPage(
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.easeOutCubic,
-                          );
+                          if (_backendConfigured) {
+                            _skipToHome();
+                          } else {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.easeOutCubic,
+                            );
+                          }
                         }
                       : null,
                   style: ElevatedButton.styleFrom(
@@ -850,14 +872,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Text(
-                        'Next',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        _backendConfigured ? 'Continue' : 'Next',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_rounded, size: 16),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, size: 16),
                     ],
                   ),
                 ),
