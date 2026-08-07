@@ -4,11 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/theme.dart';
 import '../models/home_quick_action.dart';
 import '../models/trade_signal.dart';
-import '../services/task_history_logger.dart';
-import '../services/trading_api_service.dart';
+import '../services/trading_api_service.dart'
+  show TradingApiService; // avoid importing TradeSignal from here
 import '../widgets/app_animations.dart';
 import '../widgets/candle_sparkline.dart';
-import '../widgets/trade_card.dart';
 import '../widgets/trading_avatar.dart';
 import 'chart_screen.dart';
 
@@ -34,87 +33,32 @@ class HomeDashboard extends StatefulWidget {
 }
 
 class _HomeDashboardState extends State<HomeDashboard> {
+  // --- Live data state ---
   List<Map<String, dynamic>> _recentAnalyses = const [];
-  bool _loading = true;
+  List<_WatchItem> _watchlist = const [];
+  List<Map<String, dynamic>> _liveSignals = const [];
+  Map<String, dynamic>? _briefing;
+  Map<String, dynamic>? _accountSummary;
 
-  // Live market data: latest quote per watchlist symbol, refreshed by a
-  // short poll timer when a trading backend is configured. When no backend
-  // is configured the watchlist falls back to the curated static data.
+  // Loading/error states for each section
+  bool _loading = true;
+  bool _loadingQuotes = false;
+  bool _loadingSignals = false;
+  bool _loadingBriefing = false;
+  bool _loadingAccount = false;
+  String? _quotesError;
+  String? _signalsError;
+  String? _briefingError;
+  String? _accountError;
+
+  // Live market data
   Timer? _quoteTimer;
   final Map<String, Map<String, dynamic>> _liveQuotes = {};
   final Map<String, DateTime> _quoteTimestamps = {};
   bool _hasUnreadActivity = true;
   String _preferredTimeframe = 'H1';
   static const Duration _staleThreshold = Duration(seconds: 30);
-
-  static const Duration _quotePollInterval = Duration(seconds: 6);
-
-  static const List<_WatchItem> _watchlist = [
-    _WatchItem(
-      'BTC/USD',
-      'BTCUSD',
-      108412.0,
-      2.34,
-      [
-        [104200, 104900, 103800, 104650],
-        [104650, 105800, 104400, 105700],
-        [105700, 105200, 104900, 105350],
-        [105350, 106400, 105100, 106250],
-        [106250, 107100, 105900, 106800],
-        [106800, 106400, 106050, 106520],
-        [106520, 107800, 106300, 107650],
-        [107650, 108412, 107200, 108412],
-      ],
-    ),
-    _WatchItem(
-      'ETH/USD',
-      'ETHUSD',
-      3892.5,
-      -0.87,
-      [
-        [3900, 3940, 3880, 3935],
-        [3935, 3920, 3875, 3890],
-        [3890, 3905, 3860, 3872],
-        [3872, 3885, 3840, 3848],
-        [3848, 3860, 3825, 3835],
-        [3835, 3872, 3820, 3865],
-        [3865, 3900, 3850, 3892],
-        [3892, 3912, 3880, 3892],
-      ],
-    ),
-    _WatchItem(
-      'XAU/USD',
-      'XAUUSD',
-      2418.5,
-      0.42,
-      [
-        [2401, 2408, 2394, 2406],
-        [2406, 2402, 2392, 2398],
-        [2398, 2404, 2390, 2402],
-        [2402, 2409, 2398, 2407],
-        [2407, 2414, 2402, 2411],
-        [2411, 2408, 2400, 2405],
-        [2405, 2414, 2401, 2412],
-        [2412, 2418, 2409, 2418],
-      ],
-    ),
-    _WatchItem(
-      'NAS100',
-      'NAS100',
-      21482.0,
-      -0.31,
-      [
-        [21600, 21680, 21560, 21650],
-        [21650, 21610, 21520, 21580],
-        [21580, 21620, 21490, 21530],
-        [21530, 21570, 21460, 21490],
-        [21490, 21540, 21430, 21480],
-        [21480, 21510, 21390, 21430],
-        [21430, 21490, 21400, 21460],
-        [21460, 21500, 21440, 21482],
-      ],
-    ),
-  ];
+  static const Duration _quotePollInterval = Duration(seconds: 10);
 
   @override
   void initState() {
@@ -130,35 +74,156 @@ class _HomeDashboardState extends State<HomeDashboard> {
     super.dispose();
   }
 
+  /// Load all live data for the dashboard.
+  Future<void> _load() async {
+    setState(() => _loading = true);
+
+    // Load watchlist symbols from local storage (same as chart screen)
+    final prefs = await SharedPreferences.getInstance();
+    final storedSymbols = prefs.getStringList('watchlist_symbols');
+    final storedTimeframes = prefs.getStringList('watchlist_timeframes');
+    _preferredTimeframe = (storedTimeframes != null && storedTimeframes.isNotEmpty)
+        ? storedTimeframes.first
+        : 'H1';
+
+    // Build _WatchItem list from stored symbols (with fallback defaults)
+    final symbols = (storedSymbols != null && storedSymbols.isNotEmpty)
+        ? storedSymbols
+        : const ['EURUSD', 'XAUUSD', 'BTCUSD', 'ETHUSD', 'NAS100'];
+
+    _watchlist = symbols.map((s) => _WatchItem.fromSymbol(s)).toList();
+
+    if (!mounted) return;
+
+    // Fetch all live data in parallel
+    await Future.wait([
+      _fetchSignals(),
+      _fetchBriefing(),
+      _fetchAccountSummary(),
+    ]);
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+  }
+
+  /// Fetch live quotes for all watchlist symbols using the batch endpoint.
   Future<void> _refreshQuotes() async {
-    // No-op until a trading backend is configured; the periodic timer keeps
-    // checking so quotes start flowing as soon as the user saves one.
     if (!widget.tradingApiService.isConfigured) return;
-    for (final item in _watchlist) {
-      final quote = await widget.tradingApiService.getQuote(item.symbol);
+    if (_watchlist.isEmpty) return;
+
+    setState(() {
+      _loadingQuotes = true;
+      _quotesError = null;
+    });
+
+    try {
+      final result = await widget.tradingApiService.getWatchlistPrices();
       if (!mounted) return;
-      if (quote['status'] == 'ok') {
-        setState(() {
-          _liveQuotes[item.symbol] = quote;
-          _quoteTimestamps[item.symbol] = DateTime.now();
-        });
+      if (result['status'] == 'error') {
+        setState(() => _quotesError = result['message'] as String? ?? 'Failed to load quotes');
+      } else if (result['quotes'] is List) {
+        final quotes = (result['quotes'] as List).cast<Map<String, dynamic>>();
+        for (final q in quotes) {
+          if (q['status'] == 'ok' && q['symbol'] is String) {
+            setState(() {
+              _liveQuotes[q['symbol'] as String] = q;
+              _quoteTimestamps[q['symbol'] as String] = DateTime.now();
+            });
+          }
+        }
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _quotesError = e.toString());
+    } finally {
+      if (mounted) setState(() => _loadingQuotes = false);
     }
   }
 
-  Future<void> _load() async {
-    final history = await TaskHistoryLogger.readHistory();
-    final prefs = await SharedPreferences.getInstance();
-    final storedTimeframes = prefs.getStringList('watchlist_timeframes');
-    if (!mounted) return;
+  Future<void> _fetchSignals() async {
     setState(() {
-      _recentAnalyses = history.take(3).toList();
-      _loading = false;
-      _preferredTimeframe = (storedTimeframes != null &&
-              storedTimeframes.isNotEmpty)
-          ? storedTimeframes.first
-          : 'H1';
+      _loadingSignals = true;
+      _signalsError = null;
     });
+    try {
+      final result = await widget.tradingApiService.getWatchlistSignals();
+      if (!mounted) return;
+      if (result['status'] == 'error') {
+        setState(() => _signalsError = result['message'] as String? ?? 'Failed to load signals');
+      } else if (result['signals'] is List) {
+        setState(() => _liveSignals = (result['signals'] as List).cast<Map<String, dynamic>>());
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _signalsError = e.toString());
+    } finally {
+      if (mounted) setState(() => _loadingSignals = false);
+    }
+  }
+
+  Future<void> _fetchBriefing() async {
+    setState(() {
+      _loadingBriefing = true;
+      _briefingError = null;
+    });
+    try {
+      final result = await widget.tradingApiService.getDailyBriefing();
+      if (!mounted) return;
+      if (result['status'] == 'error') {
+        setState(() => _briefingError = result['message'] as String? ?? 'Failed to load briefing');
+      } else {
+        setState(() => _briefing = result);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _briefingError = e.toString());
+    } finally {
+      if (mounted) setState(() => _loadingBriefing = false);
+    }
+  }
+
+  Future<void> _fetchAccountSummary() async {
+    setState(() {
+      _loadingAccount = true;
+      _accountError = null;
+    });
+    try {
+      final result = await widget.tradingApiService.getAccountSummary();
+      if (!mounted) return;
+      if (result['status'] == 'error') {
+        setState(() => _accountError = result['message'] as String? ?? 'Failed to load account');
+      } else {
+        setState(() => _accountSummary = result);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _accountError = e.toString());
+    } finally {
+      if (mounted) setState(() => _loadingAccount = false);
+    }
+  }
+
+  /// Trigger a fresh analysis run for all watchlist symbols.
+  Future<void> _refreshAllSignals() async {
+    if (!widget.tradingApiService.isConfigured) return;
+    setState(() {
+      _loadingSignals = true;
+      _signalsError = null;
+    });
+    try {
+      final result = await widget.tradingApiService.refreshWatchlistSignals();
+      if (!mounted) return;
+      if (result['status'] == 'error') {
+        setState(() => _signalsError = result['message'] as String? ?? 'Refresh failed');
+      } else if (result['signals'] is List) {
+        setState(() => _liveSignals = (result['signals'] as List).cast<Map<String, dynamic>>());
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _signalsError = e.toString());
+    } finally {
+      if (mounted) setState(() => _loadingSignals = false);
+    }
   }
 
   /// Open the live TradingView chart for a watchlist symbol.
@@ -186,11 +251,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     final q = _liveQuotes[symbol];
     if (q == null || q['status'] != 'ok') return null;
     return _isQuoteFresh(symbol) ? q : null;
-  }
-  // Helper to map a signal pair (e.g., "XAU/USD") to the watchlist symbol
-  // key (e.g., "XAUUSD") for live quote lookup.
-  String _signalPairToSymbol(String pair) {
-    return pair.replaceAll('/', '').toUpperCase();
   }
 
   Future<void> _openDefaultChart() async {
@@ -356,23 +416,32 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 const SizedBox(height: AppTokens.spaceXl),
                 FadeInUp(
                   delay: const Duration(milliseconds: 280),
-                  child: _buildSectionTitle('Latest signals', secondary),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildSectionTitle('Latest signals', secondary),
+                      if (widget.tradingApiService.isConfigured)
+                        TextButton.icon(
+                          onPressed: _loadingSignals ? null : _refreshAllSignals,
+                          icon: _loadingSignals
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.refresh_rounded, size: 16),
+                          label: Text(_loadingSignals ? 'Refreshing...' : 'Refresh'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.amber,
+                            textStyle: AppFonts.body(size: 11, weight: FontWeight.w600),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: AppTokens.spaceMd),
-                for (final signal in TradeSignal.samples)
-                  Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: AppTokens.spaceLg),
-                    child: FadeInUp(
-                      child: TradeCard(
-                        signal: signal,
-                        onTap: () =>
-                            widget.onQuickAction(HomeQuickAction.askAi),
-                        liveQuote: _getFreshQuote(
-                            _signalPairToSymbol(signal.pair)),
-                      ),
-                    ),
-                  ),
+                _buildSignalsList(isDark),
                 const SizedBox(height: AppTokens.spaceXs),
                 FadeInUp(
                   child: _buildSectionTitle('Recent analyses', secondary),
@@ -556,6 +625,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildBriefingCard(BuildContext context) {
+    final briefingText = _briefing?['text'] as String?;
+    final isLoading = _loadingBriefing;
+    final hasError = _briefingError != null;
+    final displayText = hasError
+        ? 'Briefing unavailable: $_briefingError'
+        : (briefingText?.isNotEmpty == true
+            ? briefingText!
+            : (isLoading ? 'Loading briefing...' : 'No briefing available. Connect a watchlist to get started.'));
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -574,7 +652,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
               ],
             ),
             border: Border.all(
-              color: AppColors.amber.withValues(alpha: 0.25),
+              color: hasError
+                  ? AppColors.bear.withValues(alpha: 0.5)
+                  : AppColors.amber.withValues(alpha: 0.25),
             ),
             boxShadow: AppShadows.card,
           ),
@@ -584,15 +664,21 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.amber.withValues(alpha: 0.14),
+                  color: hasError
+                      ? AppColors.bear.withValues(alpha: 0.14)
+                      : AppColors.amber.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: AppShadows.glow,
                 ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: AppColors.amber,
-                  size: 22,
-                ),
+                child: hasError
+                    ? const Icon(Icons.error_outline_rounded, color: AppColors.bear, size: 22)
+                    : (isLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.amber),
+                          )
+                        : const Icon(Icons.auto_awesome_rounded, color: AppColors.amber, size: 22)),
               ),
               const SizedBox(width: AppTokens.spaceLg),
               Expanded(
@@ -608,11 +694,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'Markets are range-bound overnight. Gold holds '
-                      'support; crypto momentum cooling.',
+                      displayText,
                       style: AppFonts.body(
                         size: AppTokens.captionSize,
-                        color: AppColors.textSecondaryDark,
+                        color: hasError
+                            ? AppColors.bear
+                            : AppColors.textSecondaryDark,
                         height: 1.35,
                       ),
                     ),
@@ -631,44 +718,360 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildStatGrid(bool isDark) {
+    final connected = _accountSummary?['connected'] == true;
+    final simulation = _accountSummary?['simulation'] == true;
+    final openTrades = _accountSummary?['openTrades'] as int? ?? 0;
+    final riskUsed = _accountSummary?['riskUsedPercent'] as int? ?? 0;
+    final dailyPL = _accountSummary?['dailyPLPercent'] as double? ?? 0.0;
+    final health = _accountSummary?['health'] as int? ?? 0;
+    final isLoading = _loadingAccount;
+    final hasError = _accountError != null;
+
+    if (!connected && !isLoading && !hasError) {
+      return _buildDisconnectedStatGrid(isDark);
+    }
+
+    final dailyPLColor = dailyPL >= 0 ? AppColors.bull : AppColors.bear;
+    final dailyPLPrefix = dailyPL >= 0 ? '+' : '';
+
     return Row(
       children: [
         Expanded(
           child: _StatCard(
             label: 'Open trades',
-            value: '3',
+            value: isLoading ? '—' : openTrades.toString(),
             icon: Icons.layers_rounded,
             accent: AppColors.info,
+            isLoading: isLoading,
           ),
         ),
         const SizedBox(width: AppTokens.spaceMd),
         Expanded(
           child: _StatCard(
             label: 'Risk used',
-            value: '42%',
+            value: isLoading ? '—' : '$riskUsed%',
             icon: Icons.speed_rounded,
-            accent: AppColors.warning,
+            accent: riskUsed > 80 ? AppColors.bear : AppColors.warning,
+            isLoading: isLoading,
           ),
         ),
         const SizedBox(width: AppTokens.spaceMd),
         Expanded(
           child: _StatCard(
             label: 'Daily P/L',
-            value: '+1.24%',
+            value: isLoading ? '—' : '$dailyPLPrefix${dailyPL.toStringAsFixed(2)}%',
             icon: Icons.trending_up_rounded,
-            accent: AppColors.bull,
+            accent: dailyPLColor,
+            isLoading: isLoading,
           ),
         ),
         const SizedBox(width: AppTokens.spaceMd),
         Expanded(
           child: _StatCard(
             label: 'Health',
-            value: '88',
+            value: isLoading ? '—' : health.toString(),
             icon: Icons.favorite_rounded,
-            accent: AppColors.bull,
+            accent: health >= 70 ? AppColors.bull : (health >= 40 ? AppColors.warning : AppColors.bear),
+            isLoading: isLoading,
+            subtitle: simulation ? 'Simulation' : null,
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDisconnectedStatGrid(bool isDark) {
+    return Row(
+      children: [
+        Expanded(
+          child: _StatCard(
+            label: 'Open trades',
+            value: '—',
+            icon: Icons.layers_rounded,
+            accent: AppColors.textMutedDark,
+            subtitle: 'Connect MT5',
+          ),
+        ),
+        const SizedBox(width: AppTokens.spaceMd),
+        Expanded(
+          child: _StatCard(
+            label: 'Risk used',
+            value: '—',
+            icon: Icons.speed_rounded,
+            accent: AppColors.textMutedDark,
+            subtitle: 'Connect MT5',
+          ),
+        ),
+        const SizedBox(width: AppTokens.spaceMd),
+        Expanded(
+          child: _StatCard(
+            label: 'Daily P/L',
+            value: '—',
+            icon: Icons.trending_up_rounded,
+            accent: AppColors.textMutedDark,
+            subtitle: 'Connect MT5',
+          ),
+        ),
+        const SizedBox(width: AppTokens.spaceMd),
+        Expanded(
+          child: _StatCard(
+            label: 'Health',
+            value: '—',
+            icon: Icons.favorite_rounded,
+            accent: AppColors.textMutedDark,
+            subtitle: 'Connect MT5',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSignalsList(bool isDark) {
+    if (_signalsError != null) {
+      return _SignalsErrorCard(
+        message: 'Failed to load signals: $_signalsError',
+        onRetry: _refreshAllSignals,
+      );
+    }
+
+    if (_liveSignals.isEmpty && !_loadingSignals) {
+      return _SignalsEmptyCard(
+        message: widget.tradingApiService.isConfigured
+            ? 'No signals match your strategy right now. Pull to refresh or wait for the next analysis cycle.'
+            : 'Connect a TradingView watchlist to get live signals.',
+        onConfigure: widget.tradingApiService.isConfigured ? null : () => widget.onQuickAction(HomeQuickAction.askAi),
+      );
+    }
+
+    return Column(
+      children: [
+        for (int i = 0; i < _liveSignals.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppTokens.spaceLg),
+            child: FadeInUp(
+              delay: Duration(milliseconds: 100 * i),
+              child: _buildSignalCard(_liveSignals[i], isDark),
+            ),
+          ),
+        if (_loadingSignals)
+          Padding(
+            padding: const EdgeInsets.all(AppTokens.spaceMd),
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.amber.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSignalCard(Map<String, dynamic> data, bool isDark) {
+    // Convert live signal data to TradeSignal for the TradeCard widget
+    final signal = TradeSignal(
+      pair: data['pair'] as String? ?? 'UNKNOWN',
+      timeframe: data['timeframe'] as String? ?? 'H1',
+      bias: (data['bias'] as String? ?? 'NEUTRAL').toUpperCase(),
+      entry: (data['entry'] as num?)?.toDouble() ?? 0.0,
+      stopLoss: (data['stopLoss'] as num?)?.toDouble() ?? 0.0,
+      takeProfit: (data['takeProfit'] as num?)?.toDouble() ?? 0.0,
+      riskPercent: (data['riskPercent'] as num?)?.toDouble() ?? 0.0,
+      riskReward: (data['riskReward'] as num?)?.toDouble() ?? 0.0,
+      confidence: (data['confidence'] as int?) ?? 0,
+      confidenceReason: data['confidenceReason'] as String? ?? '',
+      marketStructure: data['marketStructure'] as String? ?? '',
+      liquidity: data['liquidity'] as String? ?? '',
+      trend: data['trend'] as String? ?? '',
+      newsImpact: data['newsImpact'] as String? ?? '',
+      strategyMatch: data['strategyMatch'] as String? ?? '',
+    );
+
+    // Determine if this is a neutral/no-trade signal
+    final isNeutral = signal.bias == 'NEUTRAL' || signal.bias == 'ERROR';
+    final hasError = signal.bias == 'ERROR';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
+        onTap: isNeutral
+            ? null
+            : () => widget.onQuickAction(HomeQuickAction.askAi),
+        child: Ink(
+          padding: const EdgeInsets.all(AppTokens.spaceLg),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
+            color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+            border: Border.all(
+              color: hasError
+                  ? AppColors.bear.withValues(alpha: 0.5)
+                  : (isNeutral
+                      ? AppColors.textMutedDark.withValues(alpha: 0.3)
+                      : AppColors.amber.withValues(alpha: 0.25)),
+            ),
+            boxShadow: AppShadows.card,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: hasError
+                          ? AppColors.bear.withValues(alpha: 0.15)
+                          : (signal.bias == 'LONG'
+                              ? AppColors.bull.withValues(alpha: 0.15)
+                              : (signal.bias == 'SHORT'
+                                  ? AppColors.bear.withValues(alpha: 0.15)
+                                  : AppColors.textMutedDark.withValues(alpha: 0.15))),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      signal.pair,
+                      style: AppFonts.body(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        color: hasError
+                            ? AppColors.bear
+                            : (signal.bias == 'LONG'
+                                ? AppColors.bull
+                                : (signal.bias == 'SHORT'
+                                    ? AppColors.bear
+                                    : AppColors.textMutedDark)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: hasError
+                          ? AppColors.bear.withValues(alpha: 0.15)
+                          : (signal.bias == 'LONG'
+                              ? AppColors.bull.withValues(alpha: 0.15)
+                              : (signal.bias == 'SHORT'
+                                  ? AppColors.bear.withValues(alpha: 0.15)
+                                  : AppColors.textMutedDark.withValues(alpha: 0.15))),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      signal.bias,
+                      style: AppFonts.body(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        color: hasError
+                            ? AppColors.bear
+                            : (signal.bias == 'LONG'
+                                ? AppColors.bull
+                                : (signal.bias == 'SHORT'
+                                    ? AppColors.bear
+                                    : AppColors.textMutedDark)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    signal.timeframe,
+                    style: AppFonts.body(
+                      size: 11,
+                      color: AppColors.textMutedDark,
+                      weight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (signal.confidence > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${signal.confidence}%',
+                        style: AppFonts.body(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          color: AppColors.amber,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              if (!isNeutral) ...[
+                const SizedBox(height: AppTokens.spaceMd),
+                Row(
+                  children: [
+                    _SignalDetail(
+                      label: 'Entry',
+                      value: _fmtPrice(signal.entry),
+                      color: AppColors.textPrimaryDark,
+                    ),
+                    const SizedBox(width: AppTokens.spaceLg),
+                    _SignalDetail(
+                      label: 'Stop',
+                      value: _fmtPrice(signal.stopLoss),
+                      color: AppColors.bear,
+                    ),
+                    const SizedBox(width: AppTokens.spaceLg),
+                    _SignalDetail(
+                      label: 'Target',
+                      value: _fmtPrice(signal.takeProfit),
+                      color: AppColors.bull,
+                    ),
+                    const Spacer(),
+                    if (signal.riskReward != null)
+                      _SignalDetail(
+                        label: 'R:R',
+                        value: signal.riskReward!.toStringAsFixed(1),
+                        color: AppColors.amber,
+                      ),
+                  ],
+                ),
+              ],
+              if (signal.confidenceReason.isNotEmpty) ...[
+                const SizedBox(height: AppTokens.spaceMd),
+                Text(
+                  signal.confidenceReason,
+                  style: AppFonts.body(
+                    size: AppTokens.captionSize,
+                    color: AppColors.textSecondaryDark,
+                    height: 1.35,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (isNeutral && !hasError) ...[
+                const SizedBox(height: AppTokens.spaceSm),
+                Text(
+                  'No trade setup matched your strategy for this symbol.',
+                  style: AppFonts.body(
+                    size: AppTokens.captionSize,
+                    color: AppColors.textMutedDark,
+                  ).copyWith(fontStyle: FontStyle.italic),
+                ),
+              ],
+              if (hasError) ...[
+                const SizedBox(height: AppTokens.spaceSm),
+                Text(
+                  'Error: ${data['error'] ?? 'Analysis failed'}',
+                  style: AppFonts.body(
+                    size: AppTokens.captionSize,
+                    color: AppColors.bear,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1075,17 +1478,27 @@ class _StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color accent;
+  final bool isLoading;
+  final String? subtitle;
 
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.accent,
+    this.isLoading = false,
+    this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final displayValue = isLoading ? '—' : value;
+    final displayAccent = isLoading
+        ? (isDark ? AppColors.textMutedDark : AppColors.textSecondaryLight)
+        : accent;
+    final displayLabel = isLoading && subtitle != null ? subtitle! : label;
+
     return Container(
       padding: const EdgeInsets.all(AppTokens.spaceMd),
       decoration: BoxDecoration(
@@ -1099,20 +1512,20 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: accent),
+          Icon(icon, size: 18, color: displayAccent),
           const SizedBox(height: AppTokens.spaceSm),
           Text(
-            value,
+            displayValue,
             style: AppFonts.heading(
               size: 16,
               weight: FontWeight.w700,
-              color: accent,
+              color: displayAccent,
               letterSpacing: -0.3,
             ),
           ),
           const SizedBox(height: 2),
           Text(
-            label,
+            displayLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppFonts.body(
@@ -1312,6 +1725,284 @@ class _WatchItem {
   final List<List<double>> candles;
 
   const _WatchItem(this.pair, this.symbol, this.price, this.change, this.candles);
+
+  /// Create a _WatchItem from a symbol string with sensible defaults.
+  /// The price/change/candles will be replaced by live data when available.
+  factory _WatchItem.fromSymbol(String symbol) {
+    // Default static fallbacks per symbol (matching the old static watchlist)
+    final defaults = <String, _WatchItemDefaults>{
+      'BTCUSD': _WatchItemDefaults('BTC/USD', 108412.0, 2.34, [
+        [104200, 104900, 103800, 104650],
+        [104650, 105800, 104400, 105700],
+        [105700, 105200, 104900, 105350],
+        [105350, 106400, 105100, 106250],
+        [106250, 107100, 105900, 106800],
+        [106800, 106400, 106050, 106520],
+        [106520, 107800, 106300, 107650],
+        [107650, 108412, 107200, 108412],
+      ]),
+      'ETHUSD': _WatchItemDefaults('ETH/USD', 3892.5, -0.87, [
+        [3900, 3940, 3880, 3935],
+        [3935, 3920, 3875, 3890],
+        [3890, 3905, 3860, 3872],
+        [3872, 3885, 3840, 3848],
+        [3848, 3860, 3825, 3835],
+        [3835, 3872, 3820, 3865],
+        [3865, 3900, 3850, 3892],
+        [3892, 3912, 3880, 3892],
+      ]),
+      'XAUUSD': _WatchItemDefaults('XAU/USD', 2418.5, 0.42, [
+        [2401, 2408, 2394, 2406],
+        [2406, 2402, 2392, 2398],
+        [2398, 2404, 2390, 2402],
+        [2402, 2409, 2398, 2407],
+        [2407, 2414, 2402, 2411],
+        [2411, 2408, 2400, 2405],
+        [2405, 2414, 2401, 2412],
+        [2412, 2418, 2409, 2418],
+      ]),
+      'NAS100': _WatchItemDefaults('NAS100', 21482.0, -0.31, [
+        [21600, 21680, 21560, 21650],
+        [21650, 21610, 21520, 21580],
+        [21580, 21620, 21490, 21530],
+        [21530, 21570, 21460, 21490],
+        [21490, 21540, 21430, 21480],
+        [21480, 21510, 21390, 21430],
+        [21430, 21490, 21400, 21460],
+        [21460, 21500, 21440, 21482],
+      ]),
+      'EURUSD': _WatchItemDefaults('EUR/USD', 1.0850, 0.12, [
+        [1.0820, 1.0860, 1.0810, 1.0845],
+        [1.0845, 1.0870, 1.0835, 1.0865],
+        [1.0865, 1.0880, 1.0855, 1.0875],
+        [1.0875, 1.0890, 1.0865, 1.0885],
+        [1.0885, 1.0900, 1.0875, 1.0895],
+        [1.0895, 1.0910, 1.0885, 1.0905],
+        [1.0905, 1.0920, 1.0895, 1.0915],
+        [1.0915, 1.0925, 1.0905, 1.0920],
+      ]),
+      'GBPUSD': _WatchItemDefaults('GBP/USD', 1.2750, -0.05, [
+        [1.2740, 1.2780, 1.2730, 1.2760],
+        [1.2760, 1.2770, 1.2745, 1.2755],
+        [1.2755, 1.2765, 1.2740, 1.2750],
+        [1.2750, 1.2760, 1.2735, 1.2745],
+        [1.2745, 1.2755, 1.2730, 1.2740],
+        [1.2740, 1.2750, 1.2725, 1.2735],
+        [1.2735, 1.2745, 1.2720, 1.2730],
+        [1.2730, 1.2740, 1.2715, 1.2725],
+      ]),
+      'USDJPY': _WatchItemDefaults('USD/JPY', 151.50, 0.33, [
+        [151.20, 151.60, 151.10, 151.45],
+        [151.45, 151.70, 151.35, 151.65],
+        [151.65, 151.80, 151.55, 151.75],
+        [151.75, 151.90, 151.65, 151.85],
+        [151.85, 152.00, 151.75, 151.95],
+        [151.95, 152.10, 151.85, 152.05],
+        [152.05, 152.20, 151.95, 152.15],
+        [152.15, 152.25, 152.05, 152.20],
+      ]),
+      'US500': _WatchItemDefaults('US500', 5450.0, 0.45, [
+        [5400, 5460, 5390, 5445],
+        [5445, 5470, 5430, 5465],
+        [5465, 5480, 5455, 5475],
+        [5475, 5490, 5465, 5485],
+        [5485, 5500, 5475, 5495],
+        [5495, 5510, 5485, 5505],
+        [5505, 5520, 5495, 5515],
+        [5515, 5530, 5505, 5525],
+      ]),
+      'US30': _WatchItemDefaults('US30', 39500.0, -0.22, [
+        [39300, 39600, 39200, 39450],
+        [39450, 39550, 39350, 39500],
+        [39500, 39580, 39420, 39540],
+        [39540, 39600, 39480, 39560],
+        [39560, 39620, 39500, 39580],
+        [39580, 39640, 39520, 39600],
+        [39600, 39660, 39540, 39620],
+        [39620, 39680, 39560, 39640],
+      ]),
+    };
+
+    final d = defaults[symbol] ??
+        _WatchItemDefaults(
+            symbol.length == 6 ? '${symbol.substring(0, 3)}/${symbol.substring(3)}' : symbol,
+            0.0,
+            0.0,
+            []);
+    return _WatchItem(d.pair, symbol, d.price, d.change, d.candles);
+  }
+}
+
+class _WatchItemDefaults {
+  final String pair;
+  final double price;
+  final double change;
+  final List<List<double>> candles;
+
+  const _WatchItemDefaults(this.pair, this.price, this.change, this.candles);
+}
+
+/// Detail widget for signal parameters (entry, stop, target, R:R).
+class _SignalDetail extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _SignalDetail({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppFonts.body(
+            size: AppTokens.fontSizeTiny,
+            weight: FontWeight.w600,
+            color: AppColors.textMutedDark,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: AppFonts.body(
+            size: 12,
+            weight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Error state card for signals section.
+class _SignalsErrorCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _SignalsErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
+        onTap: onRetry,
+        child: Ink(
+          padding: const EdgeInsets.all(AppTokens.spaceLg),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
+            color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+            border: Border.all(color: AppColors.bear.withValues(alpha: 0.5)),
+            boxShadow: AppShadows.card,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, color: AppColors.bear, size: 24),
+              const SizedBox(width: AppTokens.spaceMd),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Failed to load signals',
+                      style: AppFonts.heading(size: 13, weight: FontWeight.w700, color: AppColors.bear),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      message,
+                      style: AppFonts.body(size: AppTokens.captionSize, color: AppColors.textSecondaryDark),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: onRetry,
+                child: Text('Retry', style: AppFonts.body(size: 12, weight: FontWeight.w600, color: AppColors.amber)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Empty state card for signals section.
+class _SignalsEmptyCard extends StatelessWidget {
+  final String message;
+  final VoidCallback? onConfigure;
+
+  const _SignalsEmptyCard({
+    required this.message,
+    this.onConfigure,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
+        onTap: onConfigure,
+        child: Ink(
+          padding: const EdgeInsets.all(AppTokens.spaceXl),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
+            color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+            border: Border.all(
+              color: isDark ? AppColors.borderDark : AppColors.borderLight,
+            ),
+            boxShadow: AppShadows.card,
+          ),
+          child: Column(
+            children: [
+              Icon(
+                Icons.analytics_outlined,
+                size: 30,
+                color: AppColors.textMutedDark,
+              ),
+              const SizedBox(height: AppTokens.spaceSm),
+              Text(
+                'No signals yet',
+                style: AppFonts.heading(size: 14, weight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: AppFonts.body(
+                  size: AppTokens.captionSize,
+                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                ),
+              ),
+              if (onConfigure != null) ...[
+                const SizedBox(height: AppTokens.spaceMd),
+                TextButton.icon(
+                  onPressed: onConfigure,
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: Text('Configure Watchlist', style: AppFonts.body(size: 12, weight: FontWeight.w600)),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.amber),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Bottom sheet surfacing recent activity: journal entries from the trading

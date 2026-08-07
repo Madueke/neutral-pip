@@ -918,6 +918,152 @@ class TradingApiService {
     return _postConfig('/agent/deactivate', {});
   }
 
+  // ---------------------------------------------------------------------------
+  // Watchlist / Home screen endpoints
+  //
+  //   GET /watchlist/prices          live quotes for watchlist symbols
+  //   GET /watchlist/signals         latest signals for watchlist
+  //   POST /watchlist/signals/refresh  trigger fresh analysis for watchlist
+  //   GET /watchlist/briefing        daily AI market briefing
+  //   GET /watchlist/account/summary  stat cards: open trades, P/L, risk, health
+  // ---------------------------------------------------------------------------
+
+  /// Fetch live quotes for the user's watchlist symbols.
+  /// Backend endpoint: GET /watchlist/prices
+  /// Returns { quotes: [{ symbol, last_close, change_percent, spark, ... }] }
+  Future<Map<String, dynamic>> getWatchlistPrices() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/watchlist/prices'),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      return {
+        'status': 'error',
+        'message': 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Fetch stored latest signals for the user's watchlist.
+  /// Backend endpoint: GET /watchlist/signals
+  /// Returns { signals: [...], updated_at: ISO8601 }
+  Future<Map<String, dynamic>> getWatchlistSignals() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/watchlist/signals'),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      return {
+        'status': 'error',
+        'message': 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Trigger fresh analysis for all watchlist symbols.
+  /// Backend endpoint: POST /watchlist/signals/refresh
+  /// Returns { signals: [...], count: N }
+  Future<Map<String, dynamic>> refreshWatchlistSignals() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$tradingBackendUrl/watchlist/signals/refresh'),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(minutes: 2));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      return {
+        'status': 'error',
+        'message': 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Fetch the daily AI market briefing.
+  /// Backend endpoint: GET /watchlist/briefing
+  /// Returns { text, generated_at, symbols: [...] }
+  Future<Map<String, dynamic>> getDailyBriefing() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/watchlist/briefing'),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      return {
+        'status': 'error',
+        'message': 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Fetch account summary stats for the stat cards.
+  /// Backend endpoint: GET /watchlist/account/summary
+  /// Returns { connected, simulation, balance, equity, openTrades,
+  ///   riskUsedPercent, dailyPLPercent, health, marginLevel, updatedAt }
+  Future<Map<String, dynamic>> getAccountSummary() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/watchlist/account/summary'),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      return {
+        'status': 'error',
+        'message': 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
   Future<Map<String, dynamic>> _postConfig(
     String path,
     Map<String, dynamic> body,
