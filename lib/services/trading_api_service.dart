@@ -764,4 +764,143 @@ class TradingApiService {
       await prefs.setString('$_tokenPrefKeyPrefix$accountKey', token);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Agent Setup: train from uploads + configuration
+  //
+  //   POST   /train                 multipart (PDFs + images) → PROPOSED
+  //                                 strategy-profile update (never saved here)
+  //   GET    /config?session_id=    current strategy profile, risk rules,
+  //                                 alarms and skills (user_taught vs auto)
+  //   POST   /config/skill-active   toggle a skill on/off
+  //   POST   /config/alarm-active   toggle an alarm on/off
+  //
+  // Identity always comes from the Bearer session token; the backend derives
+  // the user server-side. Skills are scoped by the chat session_id so they
+  // match what the agent chat sees.
+  // ---------------------------------------------------------------------------
+
+  /// The persistent chat session_id used for memory + skills, shared with
+  /// /chat so the config summary shows the same skills the agent sees.
+  Future<String> getOrCreateSessionId() => _getOrCreateSessionId();
+
+  /// Upload PDF strategy docs and/or chart images and get a PROPOSED
+  /// strategy-profile update back. The backend never saves this — the caller
+  /// decides to Confirm (via saveStrategy), Edit, or Discard.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> trainFromUploads(
+    List<String> filePaths,
+  ) async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$tradingBackendUrl/train'),
+      );
+      request.headers.addAll(_authHeaders);
+      for (final path in filePaths) {
+        request.files.add(await http.MultipartFile.fromPath('files', path));
+      }
+      final streamed =
+          await request.send().timeout(const Duration(minutes: 3));
+      final response = await http.Response.fromStream(streamed);
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Current agent configuration: strategy profile, risk rules, alarms, and
+  /// skills split into user-taught and auto-extracted.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> getConfig({required String sessionId}) async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/config').replace(
+              queryParameters: {'session_id': sessionId},
+            ),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Toggle a skill's active state (it is kept, just not used in context).
+  Future<Map<String, dynamic>> setSkillActive({
+    required String sessionId,
+    required String name,
+    required bool active,
+  }) {
+    return _postConfig(
+      '/config/skill-active',
+      {'session_id': sessionId, 'name': name, 'active': active},
+    );
+  }
+
+  /// Toggle an alarm's active state.
+  Future<Map<String, dynamic>> setAlarmActive({
+    required String id,
+    required bool active,
+  }) {
+    return _postConfig('/config/alarm-active', {'id': id, 'active': active});
+  }
+
+  Future<Map<String, dynamic>> _postConfig(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$tradingBackendUrl$path'),
+            headers: _authHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
 }

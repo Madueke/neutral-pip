@@ -11,6 +11,7 @@ import '../services/telegram_service.dart';
 import '../services/trading_api_service.dart';
 import 'connect_accounts_screen.dart';
 import 'strategy_training_screen.dart';
+import 'agent_setup_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../config/feature_flags.dart';
@@ -1058,6 +1059,29 @@ class _SettingsScreenState extends State<SettingsScreen>
                     context,
                     MaterialPageRoute(
                       builder: (_) => StrategyTrainingScreen(
+                        tradingApiService: widget.tradingApiService,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const Divider(
+                height: AppTokens.spaceXl,
+                color: AppColors.borderDark,
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.smart_toy_outlined, color: AppColors.amber),
+                title: const Text('Agent Setup'),
+                subtitle: const Text(
+                  'Train from uploads, configure by chat, manage skills & alarms',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AgentSetupScreen(
                         tradingApiService: widget.tradingApiService,
                       ),
                     ),
