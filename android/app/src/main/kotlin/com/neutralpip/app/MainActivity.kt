@@ -17,8 +17,10 @@ import android.net.Uri
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.neutralpip/accessibility"
     private val EVENT_CHANNEL = "com.neutralpip/accessibility_events"
+    private val DEEP_LINK_CHANNEL = "neutralpip/deep_link"
     private var eventSink: EventChannel.EventSink? = null
     private var overlayView: View? = null
+    private var lastDeepLink: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -42,6 +44,36 @@ class MainActivity : FlutterActivity() {
         )
 
         registerAccessibilityChannel(flutterEngine, this)
+        registerDeepLinkChannel(flutterEngine)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val link = intent.dataString
+        if (!link.isNullOrEmpty()) {
+            lastDeepLink = link
+            val engine = flutterEngine
+            if (engine != null) {
+                MethodChannel(engine.dartExecutor.binaryMessenger, DEEP_LINK_CHANNEL)
+                    .invokeMethod("onDeepLink", link)
+            }
+        }
+    }
+
+    private fun registerDeepLinkChannel(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getInitialLink" -> {
+                        if (lastDeepLink == null) {
+                            lastDeepLink = intent.dataString
+                        }
+                        result.success(lastDeepLink)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     companion object {

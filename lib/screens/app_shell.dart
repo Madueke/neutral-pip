@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../models/home_quick_action.dart';
 import '../services/ai_service.dart';
+import '../services/deep_link_service.dart';
 import '../services/telegram_service.dart';
 import '../services/trading_api_service.dart';
 import '../services/voice_service.dart';
@@ -12,6 +13,7 @@ import 'home_dashboard.dart';
 import 'journal_screen.dart';
 import 'risk_dashboard_screen.dart';
 import 'settings_screen.dart';
+import 'connect_accounts_screen.dart';
 
 /// Top-level shell: owns the shared service instances and hosts the five
 /// primary tabs behind a floating bottom navigation bar.
@@ -49,6 +51,40 @@ class _AppShellState extends State<AppShell> {
     _tradingApiService = TradingApiService(_aiService);
     _telegramService = TelegramService(_aiService, _tradingApiService);
     _initServices();
+    // Deep links may arrive before the shell is built (splash / auth / PIN
+    // gate), so both the retained value and future updates are handled.
+    DeepLinkService.pendingDeepLink.addListener(_handlePendingDeepLink);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _handlePendingDeepLink());
+  }
+
+  @override
+  void dispose() {
+    DeepLinkService.pendingDeepLink.removeListener(_handlePendingDeepLink);
+    super.dispose();
+  }
+
+  /// Opens the Settings tab and pushes Connect Trading Accounts when a
+  /// `neutralpip://settings/connect-accounts` link arrives.
+  void _handlePendingDeepLink() {
+    final link = DeepLinkService.pendingDeepLink.value;
+    if (link == null ||
+        !link.startsWith('neutralpip://settings/connect-accounts')) {
+      return;
+    }
+    DeepLinkService.pendingDeepLink.value = null; // consume the link
+    _goToTab(4);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ConnectAccountsScreen(
+            tradingApiService: _tradingApiService,
+          ),
+        ),
+      );
+    });
   }
 
   Future<void> _initServices() async {

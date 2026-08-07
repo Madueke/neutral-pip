@@ -7,6 +7,7 @@ import 'config/theme.dart';
 import 'screens/auth_gate.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/splash_screen.dart';
+import 'services/deep_link_service.dart';
 import 'overlay_main.dart';
 
 @pragma("vm:entry-point")
@@ -53,6 +54,7 @@ void Function(String task)? onOverlayTask;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  DeepLinkService.init();
 
   if (FeatureFlags.floatingOverlayEnabled) {
     FlutterOverlayWindow.overlayListener.listen((event) {
