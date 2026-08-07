@@ -5,9 +5,10 @@ import 'dart:ui';
 import '../config/app_config.dart';
 import '../config/theme.dart';
 import '../services/ai_service.dart';
+import '../widgets/auth_form.dart';
 import '../widgets/logo_loader.dart';
 import '../widgets/trading_avatar.dart';
-import 'home_screen.dart';
+import 'auth_gate.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -107,9 +108,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_completed', true);
     if (!mounted) return;
+    // Route through the auth gate so a fresh session lands on the PIN lock
+    // (when set) or the app shell, matching every later cold start.
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      MaterialPageRoute(builder: (_) => const AuthGate()),
     );
   }
 
@@ -197,9 +200,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
           );
 
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('onboarding_completed', true);
+          if (!mounted) return;
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            MaterialPageRoute(builder: (_) => const AuthGate()),
           );
         }
       } else {
@@ -383,8 +389,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     },
                     children: [
                       _buildWelcomePage(isDark),
-                      _buildPermissionsPage(isDark),
-                      if (!_backendConfigured) _buildModelSetupPage(isDark),
+                      if (_backendConfigured)
+                        _buildAccountPage(isDark)
+                      else
+                        _buildPermissionsPage(isDark),
+                      if (_backendConfigured)
+                        _buildPermissionsPage(isDark)
+                      else
+                        _buildModelSetupPage(isDark),
                     ],
                   ),
                 ),
@@ -448,7 +460,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   Widget _buildAnimatedStepper(bool isDark) {
-    final stepCount = _backendConfigured ? 2 : 3;
+    final stepTitles = _backendConfigured
+        ? const ['Welcome', 'Account', 'Permissions']
+        : const ['Welcome', 'Permissions', 'AI Setup'];
+    final stepCount = stepTitles.length;
     return Column(
       children: [
         Row(
@@ -490,9 +505,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildStepperLabel(0, 'Welcome'),
-            _buildStepperLabel(1, 'Permissions'),
-            if (!_backendConfigured) _buildStepperLabel(2, 'AI Setup'),
+            for (var i = 0; i < stepTitles.length; i++)
+              _buildStepperLabel(i, stepTitles[i]),
           ],
         ),
       ],
@@ -728,6 +742,55 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- STEP 2 (backend configured): ACCOUNT SCREEN ---
+  Widget _buildAccountPage(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 24),
+          Text(
+            'Your trading account',
+            style: AppFonts.heading(
+              size: 24,
+              weight: FontWeight.w700,
+              letterSpacing: -0.5,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Your account powers chart analysis, risk management, and trade '
+            'execution. Sign up once and everything is configured '
+            'immediately.',
+            style: AppFonts.body(
+              size: 14,
+              color: isDark
+                  ? AppColors.textSecondaryDark
+                  : AppColors.textSecondaryLight,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: AuthForm(
+                onAuthenticated: () async {
+                  if (!mounted) return;
+                  _pageController.nextPage(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOutCubic,
+                  );
+                },
+              ),
             ),
           ),
         ],

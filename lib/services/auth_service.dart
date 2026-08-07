@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -34,6 +35,7 @@ class AuthService {
   static const _displayNameKey = 'auth_display_name';
   static const _pinHashKey = 'pin_hash';
   static const _pinSaltKey = 'pin_salt';
+  static const _deviceSecretKey = 'device_secret';
 
   static const _backendUrlPrefKey = 'trading_backend_url';
   static const _maxPinAttempts = 5;
@@ -44,6 +46,7 @@ class AuthService {
   String? _displayName;
   String? _pinHash;
   String? _pinSalt;
+  String? _deviceSecret;
 
   /// Backend base URL (same SharedPreferences key the TradingApiService
   /// uses, so auth and trading calls always point at the same host).
@@ -52,6 +55,11 @@ class AuthService {
   bool get isBackendConfigured => _backendUrl.isNotEmpty;
 
   bool get hasSession => _sessionToken != null && _sessionToken!.isNotEmpty;
+
+  /// Passkeys (WebAuthn) only work against an HTTPS backend with a valid RP
+  /// ID. Plain-HTTP / IP-address deployments use the device-bound secret
+  /// instead, so the UI skips the passkey ceremony on non-HTTPS connections.
+  bool get passkeysSupported => _backendUrl.startsWith('https://');
   String? get sessionToken => _sessionToken;
   String? get userId => _userId;
   String? get email => _email;
@@ -73,6 +81,7 @@ class AuthService {
     _displayName = await _storage.read(key: _displayNameKey);
     _pinHash = await _storage.read(key: _pinHashKey);
     _pinSalt = await _storage.read(key: _pinSaltKey);
+    _deviceSecret = await _storage.read(key: _deviceSecretKey);
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(_backendUrlPrefKey) ?? '';
     _backendUrl = stored.trim().isNotEmpty ? stored : defaultTradingBackendUrl;
@@ -118,11 +127,13 @@ class AuthService {
   }
 
   /// Create an account. Backend issues a session token immediately so the
-  /// mandatory passkey registration can run right away.
+  /// passkey registration (HTTPS) or device-secret binding can run right
+  /// away. A fresh device secret is generated and sent with the sign-up.
   Future<Map<String, dynamic>> signUp({
     required String email,
     required String displayName,
   }) async {
+    await _ensureDeviceSecret();
     final response = await http
         .post(
           Uri.parse('$_backendUrl/auth/signup'),
@@ -130,6 +141,7 @@ class AuthService {
           body: jsonEncode({
             'email': email.trim(),
             'display_name': displayName.trim(),
+            'device_secret': _deviceSecret,
           }),
         )
         .timeout(const Duration(seconds: 15));
@@ -142,6 +154,39 @@ class AuthService {
       userId: data['user_id'] as String,
       email: data['email'] as String,
       displayName: data['display_name'] as String? ?? displayName,
+    );
+    return data;
+  }
+
+  /// Sign in with the device-bound secret (the passkey fallback for
+  /// plain-HTTP / IP-address backends). The backend binds the secret on first
+  /// verify for credential-less accounts and issues a fresh session.
+  Future<Map<String, dynamic>> signInWithDeviceSecret(String email) async {
+    if (!isBackendConfigured) {
+      throw AuthException('Trading backend is not configured');
+    }
+    await _ensureDeviceSecret();
+    final response = await http
+        .post(
+          Uri.parse('$_backendUrl/auth/device/verify'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': email.trim(),
+            'device_secret': _deviceSecret,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
+    final data = _decodeMap(response.body);
+    if (response.statusCode != 200 || data['session_token'] == null) {
+      throw AuthException(
+        _errorMessage(data, 'Device sign in failed (HTTP ${response.statusCode})'),
+      );
+    }
+    await _storeSession(
+      token: data['session_token'] as String,
+      userId: data['user_id'] as String,
+      email: data['email'] as String? ?? email,
+      displayName: data['display_name'] as String? ?? _displayName ?? '',
     );
     return data;
   }
@@ -163,8 +208,12 @@ class AuthService {
     return data;
   }
 
-  /// Register a passkey on this device for the current session.
+  /// Register a passkey on this device for the current session. Only valid
+  /// over HTTPS; callers should check [passkeysSupported] first.
   Future<void> registerPasskey() async {
+    if (!passkeysSupported) {
+      throw AuthException('Passkeys require a secure (HTTPS) connection');
+    }
     if (!hasSession || !isBackendConfigured) {
       throw AuthException('No active session to attach a passkey to');
     }
@@ -219,8 +268,12 @@ class AuthService {
   }
 
   /// Sign in with a saved passkey. Returns the full user map from the
-  /// backend (which includes the fresh session token).
+  /// backend (which includes the fresh session token). Only valid over HTTPS;
+  /// callers should check [passkeysSupported] first.
   Future<Map<String, dynamic>> authenticatePasskey(String userId) async {
+    if (!passkeysSupported) {
+      throw AuthException('Passkeys require a secure (HTTPS) connection');
+    }
     if (!isBackendConfigured) {
       throw AuthException('Trading backend is not configured');
     }
@@ -350,6 +403,20 @@ class AuthService {
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
+
+  /// Generate (once) and persist a random 32-byte device secret. It is the
+  /// same credential sent to the backend on sign-up and device sign-in.
+  Future<void> _ensureDeviceSecret() async {
+    _deviceSecret ??= await _storage.read(key: _deviceSecretKey);
+    if (_deviceSecret == null || _deviceSecret!.isEmpty) {
+      final rnd = Random.secure();
+      final bytes = List<int>.generate(32, (_) => rnd.nextInt(256));
+      _deviceSecret = bytes
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      await _storage.write(key: _deviceSecretKey, value: _deviceSecret);
+    }
+  }
 
   Future<void> _storeSession({
     required String token,
