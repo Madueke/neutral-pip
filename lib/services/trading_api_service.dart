@@ -874,6 +874,47 @@ class TradingApiService {
     return _postConfig('/config/alarm-active', {'id': id, 'active': active});
   }
 
+  /// Current agent activation state: agent_active, activated_at, and whether
+  /// a strategy profile / connected accounts exist yet.
+  ///
+  /// TRADING MODE: never add tap-based execution here.
+  Future<Map<String, dynamic>> getAgentStatus() async {
+    if (!isConfigured) {
+      return {'status': 'error', 'message': 'Trading backend not configured'};
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$tradingBackendUrl/agent/status'),
+            headers: _authHeaders,
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        return data;
+      }
+      return {
+        'status': 'error',
+        'message': data is Map<String, dynamic> && data['error'] is String
+            ? data['error'] as String
+            : 'Backend returned HTTP ${response.statusCode}',
+      };
+    } catch (e) {
+      return {'status': 'error', 'message': 'Could not reach backend: $e'};
+    }
+  }
+
+  /// Activate the agent: creates the default strategy profile and risk rules
+  /// on first activation and flips the flag on. Idempotent on re-activation.
+  Future<Map<String, dynamic>> activateAgent() {
+    return _postConfig('/agent/activate', {});
+  }
+
+  /// Pause the agent (reversible). Never deletes memory, strategy or history.
+  Future<Map<String, dynamic>> deactivateAgent() {
+    return _postConfig('/agent/deactivate', {});
+  }
+
   Future<Map<String, dynamic>> _postConfig(
     String path,
     Map<String, dynamic> body,

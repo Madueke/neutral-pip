@@ -54,6 +54,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _autoExecuteUpdating = false;
   Map<String, dynamic>? _riskLimits;
 
+  // Agent activation: the user's own pause switch (separate from the
+  // admin kill-switch). Deactivation is reversible and never deletes data.
+  bool? _agentActive;
+  bool _agentUpdating = false;
+
   final Map<String, PermissionStatus> _permissions = {};
 
   @override
@@ -90,6 +95,93 @@ class _SettingsScreenState extends State<SettingsScreen>
       _checkOverlayStatus();
     }
     _loadAutoExecute();
+    _loadAgentStatus();
+  }
+
+  /// Load the agent's activation state from the backend. Stays `null` (and
+  /// the toggle hides) when no trading backend is configured.
+  Future<void> _loadAgentStatus() async {
+    if (!widget.tradingApiService.isConfigured) return;
+    final status = await widget.tradingApiService.getAgentStatus();
+    if (!mounted || status['status'] == 'error') return;
+    if (status.containsKey('agent_active')) {
+      setState(() {
+        _agentActive = status['agent_active'] == true;
+      });
+    }
+  }
+
+  /// Flip the user's own agent pause switch. Deactivating asks for
+  /// confirmation (it pauses chat, analysis and alarms); reactivating is
+  /// immediate and reversible.
+  Future<void> _onAgentToggle(bool value) async {
+    if (value) {
+      // Reactivate — no confirmation needed, nothing is lost.
+      setState(() => _agentUpdating = true);
+      final response = await widget.tradingApiService.activateAgent();
+      if (!mounted) return;
+      setState(() {
+        _agentUpdating = false;
+        if (response['activated'] == true) _agentActive = true;
+      });
+      if (response['activated'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.bear,
+            content: Text(
+              'Could not activate: ${response['message'] ?? 'unknown error'}',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Deactivate — reversible pause, ask before switching the agent off.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceDark,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+        ),
+        title: const Text('Pause your agent?'),
+        content: const Text(
+          'Chat, analysis and alarms will pause until you switch it back on. '
+          'Your strategy, memory and history are kept — nothing is deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.amber),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Pause'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _agentUpdating = true);
+    final response = await widget.tradingApiService.deactivateAgent();
+    if (!mounted) return;
+    setState(() {
+      _agentUpdating = false;
+      if (response['deactivated'] == true) _agentActive = false;
+    });
+    if (response['deactivated'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.bear,
+          content: Text(
+            'Could not pause: ${response['message'] ?? 'unknown error'}',
+          ),
+        ),
+      );
+    }
   }
 
   /// Load the auto-execute flag + risk limits from the trading backend so
@@ -1109,6 +1201,33 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ],
           ),
+
+          // 7c. Agent Status Card — the user's own pause switch. Only shown
+          // when a trading backend is configured (state lives server-side).
+          if (_agentActive != null)
+            _buildSettingsCard(
+              icon: Icons.smart_toy_outlined,
+              title: 'Agent Status',
+              subtitle: 'Pause or resume your agent at any time',
+              isDark: isDark,
+              children: [
+                SwitchListTile(
+                  title: Text(
+                    _agentActive! ? 'Agent is active' : 'Agent is paused',
+                  ),
+                  subtitle: Text(
+                    _agentActive!
+                        ? 'Chat, analysis and alarms are running.'
+                        : 'Chat, analysis and alarms are paused. Your data is kept.',
+                  ),
+                  value: _agentActive!,
+                  onChanged: _agentUpdating
+                      ? null
+                      : (value) => _onAgentToggle(value),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
+            ),
 
           // 8. About / Links Card
           _sectionLabel('About'),

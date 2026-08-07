@@ -21,6 +21,7 @@ import '../services/telegram_service.dart';
 import '../services/chat_history_service.dart';
 import '../services/notification_service.dart';
 import 'settings_screen.dart';
+import 'agent_setup_screen.dart';
 import 'journal_screen.dart';
 import 'risk_dashboard_screen.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
@@ -70,6 +71,11 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   bool _isListening = false;
+
+  /// Agent activation state from the backend. `null` = unknown (backend not
+  /// configured yet, or status not fetched). `false` blocks chat/analyze and
+  /// shows the activation card.
+  bool? _agentActive;
 
   // Trading attachments (image_picker / file_picker)
   final ImagePicker _picker = ImagePicker();
@@ -136,10 +142,83 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _voiceService.init();
     await _telegramService.init();
     await _tradingApiService.init();
+    await _refreshAgentStatus();
 
     if (mounted) {
       setState(() {});
     }
+  }
+
+  /// Fetch the agent's activation state from the backend. Silently ignores
+  /// failures (no backend / offline) — the UI simply stays in the unknown
+  /// state and chat keeps working as before.
+  Future<void> _refreshAgentStatus() async {
+    if (!_tradingApiService.isConfigured) return;
+    final status = await _tradingApiService.getAgentStatus();
+    if (status['status'] != 'error' && status.containsKey('agent_active')) {
+      if (!mounted) return;
+      setState(() {
+        _agentActive = status['agent_active'] == true;
+      });
+    }
+  }
+
+  /// Prompt the user to activate their paused agent, then route into the
+  /// Agent Setup screen on success.
+  Future<void> _activateAgentFlow() async {
+    if (!mounted) return;
+    final result = await _tradingApiService.activateAgent();
+    if (!mounted) return;
+    if (result['status'] == 'error' || result['activated'] != true) {
+      final message = result['message'] ?? 'Could not activate the agent';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Activation failed: $message')),
+      );
+      return;
+    }
+    await _refreshAgentStatus();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Your agent is ready — let\'s train it.'),
+      ),
+    );
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AgentSetupScreen(
+          tradingApiService: _tradingApiService,
+        ),
+      ),
+    );
+  }
+
+  /// Show a clear activation prompt instead of silently failing.
+  Future<void> _promptActivation() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Your agent is paused'),
+        content: const Text(
+          'Activate your agent to resume chat, analysis and alarms. '
+          'Your data is safe — activation just switches the agent back on.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _activateAgentFlow();
+            },
+            child: const Text('Activate'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Opens Settings from a guide dialog (model setup).
@@ -196,6 +275,13 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // handles requests directly and does not need one.
     if (!_tradingApiService.isConfigured && !_aiService.hasValidConfiguration) {
       await showModelSetupGuide(context, openSettings: _openSettingsFromGuide);
+      return;
+    }
+
+    // A paused agent must be reactivated before it will respond — show a
+    // clear prompt instead of letting the backend silently refuse.
+    if (_tradingApiService.isConfigured && _agentActive == false) {
+      await _promptActivation();
       return;
     }
 
@@ -560,6 +646,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
               );
+              await _refreshAgentStatus();
               if (mounted) setState(() {});
             },
           ),
@@ -591,6 +678,10 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 tradingApiService: _tradingApiService,
                 symbols: _tickerSymbols,
               ),
+
+              // Agent activation card (shown while the agent is paused)
+              if (_tradingApiService.isConfigured && _agentActive == false)
+                _buildActivationCard(),
 
               // API key warning banner
               if (!_aiService.isConfigured && !_tradingApiService.isConfigured)
@@ -638,6 +729,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ),
                             ),
                           );
+                          await _refreshAgentStatus();
                           if (mounted) setState(() {});
                         },
                         child: const Text('Configure'),
@@ -1115,6 +1207,78 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Icons.shield_outlined,
             'Risk',
             () => _openRisk(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Prominent card prompting the user to activate their (paused) agent.
+  /// Tapping Activate runs the activation flow and routes into Agent Setup.
+  Widget _buildActivationCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.amber.withValues(alpha: 0.18),
+            AppColors.amber.withValues(alpha: 0.06),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+        border: Border.all(
+          color: AppColors.amber.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.amber.withValues(alpha: 0.18),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.smart_toy_outlined,
+              color: AppColors.amber,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Activate your agent',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Your agent is paused. Activate it to chat, analyze charts and get alarm alerts.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondaryDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            onPressed: _activateAgentFlow,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.amber,
+              foregroundColor: Colors.black,
+            ),
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: const Text('Activate'),
           ),
         ],
       ),
