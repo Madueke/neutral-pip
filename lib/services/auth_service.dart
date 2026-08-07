@@ -74,13 +74,15 @@ class AuthService {
     _pinHash = await _storage.read(key: _pinHashKey);
     _pinSalt = await _storage.read(key: _pinSaltKey);
     final prefs = await SharedPreferences.getInstance();
-    _backendUrl = prefs.getString(_backendUrlPrefKey) ?? defaultTradingBackendUrl;
+    final stored = prefs.getString(_backendUrlPrefKey) ?? '';
+    _backendUrl = stored.trim().isNotEmpty ? stored : defaultTradingBackendUrl;
   }
 
   /// Refresh the backend URL from prefs (called after Settings changes).
   Future<void> reloadBackendUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    _backendUrl = prefs.getString(_backendUrlPrefKey) ?? defaultTradingBackendUrl;
+    final stored = prefs.getString(_backendUrlPrefKey) ?? '';
+    _backendUrl = stored.trim().isNotEmpty ? stored : defaultTradingBackendUrl;
   }
 
   /// Validate the stored session against GET /auth/session. Returns the user

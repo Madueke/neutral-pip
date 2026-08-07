@@ -28,8 +28,9 @@ class TradingApiService {
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString('trading_backend_url') ?? '';
     _tradingBackendUrl =
-        prefs.getString('trading_backend_url') ?? defaultTradingBackendUrl;
+        stored.trim().isNotEmpty ? stored : defaultTradingBackendUrl;
     // Keep the auth service in sync (session state + backend URL) so every
     // request below can attach the Bearer token.
     await AuthService.instance.init();

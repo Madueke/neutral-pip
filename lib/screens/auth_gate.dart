@@ -42,9 +42,9 @@ class _AuthGateState extends State<AuthGate> {
   Future<void> _bootstrap() async {
     await _auth.init();
     final prefs = await SharedPreferences.getInstance();
+    final storedBackend = prefs.getString('trading_backend_url') ?? '';
     final backendConfigured =
-        (prefs.getString('trading_backend_url') ?? defaultTradingBackendUrl)
-            .isNotEmpty;
+        storedBackend.trim().isNotEmpty || defaultTradingBackendUrl.isNotEmpty;
     if (!backendConfigured) {
       if (mounted) setState(() => _state = _AuthState.shell);
       return;
