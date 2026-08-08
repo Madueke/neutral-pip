@@ -314,6 +314,7 @@ class PinSetupDialog extends StatefulWidget {
 class _PinSetupDialogState extends State<PinSetupDialog> {
   final _controller = TextEditingController();
   String? _error;
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -321,12 +322,16 @@ class _PinSetupDialogState extends State<PinSetupDialog> {
     super.dispose();
   }
 
-  void _confirm() {
+  void _confirm() async {
     final pin = _controller.text;
     if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) {
       setState(() => _error = 'Enter 4 to 6 digits.');
       return;
     }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     Navigator.of(context).pop(pin);
   }
 
@@ -370,13 +375,19 @@ class _PinSetupDialogState extends State<PinSetupDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: const Text('Skip'),
         ),
         FilledButton(
-          onPressed: _confirm,
+          onPressed: _saving ? null : _confirm,
           style: FilledButton.styleFrom(backgroundColor: scheme.primary),
-          child: const Text('Save PIN'),
+          child: _saving
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Save PIN'),
         ),
       ],
     );

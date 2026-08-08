@@ -135,6 +135,14 @@ class _PinLockScreenState extends State<PinLockScreen> {
                     );
                   }),
                 ),
+                const SizedBox(height: AppTokens.spaceXs),
+                Text(
+                  'Enter your 4-6 digit PIN',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
                 const SizedBox(height: AppTokens.spaceLg),
 
                 if (_error != null) ...[
