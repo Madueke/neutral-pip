@@ -221,7 +221,6 @@ class _JournalScreenState extends State<JournalScreen> {
                           child: StatCard(
                             label: 'Profit Factor',
                             value: profitFactor,
-                            valueColor: AppColors.info,
                           ),
                         ),
                       ],
@@ -288,11 +287,11 @@ class _JournalScreenState extends State<JournalScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDark
-              ? const [Color(0xFF1D2740), Color(0xFF161D2F)]
+              ? const [AppColors.surfaceElevatedDark, AppColors.surfaceDark]
               : const [Color(0xFFFFFFFF), Color(0xFFF4F6FA)],
         ),
         border: Border.all(
-          color: pnlColor.withValues(alpha: 0.35),
+          color: pnlColor.withValues(alpha: 0.25),
         ),
         boxShadow: AppShadows.card,
       ),
@@ -429,10 +428,6 @@ class _JournalScreenState extends State<JournalScreen> {
               decoration: BoxDecoration(
                 color: scheme.surface,
                 borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-                border: Border.all(
-                  color: isDark ? AppColors.borderDark : AppColors.borderLight,
-                  width: AppTokens.borderWidth,
-                ),
                 boxShadow: AppShadows.card,
               ),
               child: Column(
@@ -541,17 +536,13 @@ class _JournalScreenState extends State<JournalScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
         children: [
           const Icon(
             Icons.menu_book_outlined,
-            color: AppColors.amber,
+            color: AppColors.textMutedDark,
             size: 32,
           ),
           const SizedBox(height: AppTokens.spaceMd),

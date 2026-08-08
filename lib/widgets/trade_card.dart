@@ -25,7 +25,6 @@ class TradeCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isLong = signal.bias == 'LONG';
     final biasColor = isLong ? AppColors.bull : AppColors.bear;
-    final border = isDark ? AppColors.borderDark : AppColors.borderLight;
     final secondary =
         isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight;
     final muted = isDark ? AppColors.textMutedDark : AppColors.textMutedLight;
@@ -57,7 +56,6 @@ class TradeCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
             borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-            border: Border.all(color: border, width: AppTokens.borderWidth),
             boxShadow: AppShadows.card,
           ),
           child: Column(
@@ -180,7 +178,10 @@ class TradeCard extends StatelessWidget {
                   vertical: AppTokens.spaceSm,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.10),
+                  color: (isDark
+                          ? AppColors.surfaceElevatedDark
+                          : AppColors.surfaceElevatedLight)
+                      .withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(AppTokens.radiusControl),
                 ),
                 child: Row(
@@ -188,7 +189,7 @@ class TradeCard extends StatelessWidget {
                     Icon(
                       Icons.track_changes_rounded,
                       size: 16,
-                      color: AppColors.info,
+                      color: secondary,
                     ),
                     const SizedBox(width: AppTokens.spaceSm),
                     Expanded(
@@ -197,7 +198,7 @@ class TradeCard extends StatelessWidget {
                         style: AppFonts.body(
                           size: AppTokens.captionSize,
                           weight: FontWeight.w600,
-                          color: AppColors.info,
+                          color: secondary,
                         ),
                       ),
                     ),
@@ -431,7 +432,6 @@ class _LivePriceBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: secondary.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(AppTokens.radiusChip),
-        border: Border.all(color: secondary.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

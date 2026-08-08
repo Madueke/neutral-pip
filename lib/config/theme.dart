@@ -21,14 +21,16 @@ abstract final class AppColors {
   static const Color warning = Color(0xFFF59E0B);
   static const Color info = Color(0xFF3B82F6);
 
-  // Dark surfaces (default)
-  static const Color bgDark = Color(0xFF0B0F19); // Primary background
+  // Dark surfaces (default) — true/near-black base, cards lift by tone
+  // only (no visible strokes), so the app reads like a premium dark
+  // fintech rather than a navy-tinted dashboard.
+  static const Color bgDark = Color(0xFF000000); // True black background
   static const Color secondaryBgDark = Color(
-    0xFF111827,
+    0xFF0A0A0C,
   ); // Secondary background
-  static const Color surfaceDark = Color(0xFF161D2F); // Card background
-  static const Color surfaceElevatedDark = Color(0xFF1D2740);
-  static const Color borderDark = Color(0xFF232E45); // Very subtle
+  static const Color surfaceDark = Color(0xFF131316); // Card background
+  static const Color surfaceElevatedDark = Color(0xFF1C1C20);
+  static const Color borderDark = Color(0xFF232327); // Very subtle
   static const Color textPrimaryDark = Color(0xFFFFFFFF);
   static const Color textSecondaryDark = Color(0xFF9CA3AF);
   static const Color textMutedDark = Color(0xFF6B7280);
@@ -237,8 +239,8 @@ abstract final class AppTheme {
             onSurfaceVariant: AppColors.textSecondaryDark,
             surfaceContainerLowest: AppColors.bgDark,
             surfaceContainerLow: AppColors.secondaryBgDark,
-            surfaceContainer: Color(0xFF141B2B),
-            surfaceContainerHigh: Color(0xFF182032),
+            surfaceContainer: Color(0xFF101012),
+            surfaceContainerHigh: Color(0xFF16161A),
             surfaceContainerHighest: AppColors.surfaceElevatedDark,
             outline: AppColors.borderDark,
             outlineVariant: Color(0xFF1C2538),
@@ -311,7 +313,7 @@ abstract final class AppTheme {
         shadowColor: Colors.black,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-          side: BorderSide(color: border, width: AppTokens.borderWidth),
+          side: BorderSide(color: border.withValues(alpha: 0.35)),
         ),
       ),
       dividerTheme: DividerThemeData(

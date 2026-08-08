@@ -194,13 +194,10 @@ class _TradingViewChartState extends State<TradingViewChart> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final child = Container(
       decoration: BoxDecoration(
         color: AppColors.bgDark,
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
-        ),
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
       ),
       child: Stack(
         children: [

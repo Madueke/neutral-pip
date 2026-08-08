@@ -385,10 +385,6 @@ class _StrategyTrainingScreenState extends State<StrategyTrainingScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -396,7 +392,8 @@ class _StrategyTrainingScreenState extends State<StrategyTrainingScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.science_outlined, color: AppColors.amber, size: 20),
+              Icon(Icons.science_outlined,
+                  color: scheme.onSurfaceVariant, size: 20),
               const SizedBox(width: AppTokens.spaceSm),
               Text(
                 'BACKTEST RESULTS',
@@ -565,10 +562,6 @@ class _StrategyTrainingScreenState extends State<StrategyTrainingScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -576,7 +569,7 @@ class _StrategyTrainingScreenState extends State<StrategyTrainingScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.tune_rounded, color: AppColors.amber, size: 20),
+              Icon(Icons.tune_rounded, color: scheme.onSurfaceVariant, size: 20),
               const SizedBox(width: AppTokens.spaceSm),
               Text(
                 'STRATEGY PROFILE',

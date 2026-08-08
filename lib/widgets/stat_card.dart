@@ -33,14 +33,10 @@ class StatCard extends StatelessWidget {
             : AppColors.bull);
 
     return Container(
-      padding: const EdgeInsets.all(AppTokens.spaceMd),
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(

@@ -503,10 +503,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -517,14 +513,16 @@ class _SettingsScreenState extends State<SettingsScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.amber.withValues(alpha: 0.12),
+                  color: scheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(AppTokens.radiusControl),
-                  border: Border.all(
-                    color: AppColors.amber.withValues(alpha: 0.25),
-                    width: 1,
-                  ),
                 ),
-                child: Icon(icon, color: AppColors.amber, size: 20),
+                child: Icon(
+                  icon,
+                  color: isDark
+                      ? AppColors.textSecondaryDark
+                      : AppColors.textSecondaryLight,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1012,8 +1010,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.password_rounded,
-                      color: AppColors.amber),
+                  leading: Icon(Icons.password_rounded,
+                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
                   title: const Text('Set / Change PIN'),
                   subtitle: const Text(
                     '4-6 digit fast re-entry PIN for this device only',
@@ -1130,7 +1128,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.link_rounded, color: AppColors.amber),
+                leading: Icon(Icons.link_rounded, color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
                 title: const Text('Connect Trading Accounts'),
                 subtitle: const Text(
                   'TradingView watchlist & MT5 real accounts',
@@ -1153,7 +1151,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.school_outlined, color: AppColors.amber),
+                leading: Icon(Icons.school_outlined, color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
                 title: const Text('Train My Strategy'),
                 subtitle: const Text(
                   'Define rules, indicators & risk limits, then backtest',
@@ -1176,7 +1174,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.smart_toy_outlined, color: AppColors.amber),
+                leading: Icon(Icons.smart_toy_outlined, color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
                 title: const Text('Agent Setup'),
                 subtitle: const Text(
                   'Train from uploads, configure by chat, manage skills & alarms',

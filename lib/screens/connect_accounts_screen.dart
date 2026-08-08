@@ -331,10 +331,6 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -383,10 +379,10 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppColors.amber.withValues(alpha: 0.12),
+            color: scheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(AppTokens.radiusControl),
           ),
-          child: Icon(icon, color: AppColors.amber, size: 18),
+          child: Icon(icon, color: scheme.onSurfaceVariant, size: 18),
         ),
         const SizedBox(width: AppTokens.spaceMd),
         Expanded(
@@ -430,10 +426,6 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -441,7 +433,11 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.show_chart_rounded, color: AppColors.amber, size: 20),
+              Icon(
+                Icons.show_chart_rounded,
+                color: scheme.onSurfaceVariant,
+                size: 20,
+              ),
               const SizedBox(width: AppTokens.spaceSm),
               Text(
                 'TRADINGVIEW WATCHLIST',
@@ -580,10 +576,6 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -593,7 +585,7 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
             children: [
               Icon(
                 Icons.account_balance_wallet_rounded,
-                color: AppColors.amber,
+                color: scheme.onSurfaceVariant,
                 size: 20,
               ),
               const SizedBox(width: AppTokens.spaceSm),

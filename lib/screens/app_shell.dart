@@ -184,10 +184,6 @@ class _AppShellState extends State<AppShell> {
         decoration: BoxDecoration(
           color: bg.withValues(alpha: 0.94),
           borderRadius: BorderRadius.circular(AppTokens.radiusPill),
-          border: Border.all(
-            color: isDark ? AppColors.borderDark : AppColors.borderLight,
-            width: AppTokens.borderWidth,
-          ),
           boxShadow: [
             ...AppShadows.card,
             BoxShadow(

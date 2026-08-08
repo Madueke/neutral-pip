@@ -38,12 +38,12 @@ class MessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(isUser ? 12 : 4),
             bottomRight: Radius.circular(isUser ? 4 : 12),
           ),
-          border: Border.all(
-            color: isUser
-                ? AppColors.amber.withValues(alpha: 0.4)
-                : scheme.outlineVariant,
-            width: 1,
-          ),
+          border: isUser
+              ? Border.all(
+                  color: AppColors.amber.withValues(alpha: 0.35),
+                  width: 1,
+                )
+              : null,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

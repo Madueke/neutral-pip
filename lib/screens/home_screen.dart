@@ -975,13 +975,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ).colorScheme.primary.withValues(alpha: 0.08)
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(12),
-                        border: isCurrent
-                            ? Border.all(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primary.withValues(alpha: 0.15),
-                              )
-                            : null,
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
@@ -1087,8 +1080,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? AppColors.amber.withValues(alpha: 0.10)
-                        : AppColors.amber.withValues(alpha: 0.07),
+                        ? AppColors.amber.withValues(alpha: 0.04)
+                        : AppColors.amber.withValues(alpha: 0.03),
                     isDark
                         ? AppColors.amber.withValues(alpha: 0)
                         : AppColors.amber.withValues(alpha: 0),
@@ -1138,11 +1131,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       : AppColors.surfaceElevatedLight)
                   .withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: Theme.of(
-              context,
-            ).colorScheme.primary.withValues(alpha: 0.35),
-          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1150,7 +1138,9 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Icon(
               Icons.shield_rounded,
               size: 14,
-              color: Theme.of(context).colorScheme.primary,
+              color: isDark
+                  ? AppColors.textSecondaryDark
+                  : AppColors.textSecondaryLight,
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -1217,29 +1207,21 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Prominent card prompting the user to activate their (paused) agent.
   /// Tapping Activate runs the activation flow and routes into Agent Setup.
   Widget _buildActivationCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.amber.withValues(alpha: 0.18),
-            AppColors.amber.withValues(alpha: 0.06),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: AppColors.amber.withValues(alpha: 0.45),
-        ),
+        boxShadow: AppShadows.card,
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.amber.withValues(alpha: 0.18),
+              color: AppColors.amber.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -1302,14 +1284,10 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           decoration: BoxDecoration(
             color: scheme.surface,
             borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-            border: Border.all(
-              color: scheme.outlineVariant,
-              width: AppTokens.borderWidth,
-            ),
           ),
           child: Column(
             children: [
-              Icon(icon, size: 18, color: AppColors.amber),
+              Icon(icon, size: 18, color: scheme.onSurfaceVariant),
               const SizedBox(height: 4),
               Text(
                 label,
@@ -1426,18 +1404,14 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Container(
               padding: const EdgeInsets.all(AppTokens.spaceLg),
               decoration: BoxDecoration(
-                color: AppColors.amber.withValues(alpha: 0.08),
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-                border: Border.all(
-                  color: AppColors.amber.withValues(alpha: 0.35),
-                  width: AppTokens.borderWidth,
-                ),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.candlestick_chart_rounded,
-                    color: AppColors.amber,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     size: 28,
                   ),
                   const SizedBox(width: 12),
@@ -1495,12 +1469,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ? AppColors.surfaceElevatedDark
                               : Colors.white,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isDark
-                                ? AppColors.borderDark
-                                : AppColors.borderLight,
-                            width: 1.2,
-                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(
@@ -1807,7 +1775,9 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.attach_file_rounded, size: 20),
-                        color: Theme.of(context).colorScheme.primary,
+                        color: isDark
+                            ? AppColors.textSecondaryDark
+                            : AppColors.textSecondaryLight,
                         tooltip: 'Attach chart image or file',
                         onPressed: _isLoading ? null : _showAttachmentPicker,
                       ),

@@ -145,9 +145,9 @@ class _SplashScreenState extends State<SplashScreen>
           center: Alignment(0, -0.05),
           radius: 1.05,
           colors: [
-            Color(0xFF141B2E),
+            AppColors.surfaceElevatedDark,
             AppColors.bgDark,
-            Color(0xFF070A12),
+            Color(0xFF000000),
           ],
           stops: [0.0, 0.55, 1.0],
         ),

@@ -424,8 +424,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 gradient: RadialGradient(
                   colors: [
                     isDark
-                        ? AppColors.amber.withValues(alpha: 0.10)
-                        : AppColors.amber.withValues(alpha: 0.07),
+                        ? AppColors.amber.withValues(alpha: 0.04)
+                        : AppColors.amber.withValues(alpha: 0.03),
                     isDark
                         ? AppColors.amber.withValues(alpha: 0)
                         : AppColors.amber.withValues(alpha: 0),
@@ -553,7 +553,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 height: 170,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.amber.withValues(alpha: 0.12),
+                  color: AppColors.amber.withValues(alpha: 0.06),
                 ),
               ),
               Container(
@@ -571,10 +571,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       offset: const Offset(0, 10),
                     ),
                   ],
-                  border: Border.all(
-                    color: AppColors.amber.withValues(alpha: 0.35),
-                    width: 1.5,
-                  ),
                 ),
                 child: const TradingAvatar(size: 84),
               ),
@@ -701,12 +697,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       decoration: BoxDecoration(
         color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: Theme.of(
-            context,
-          ).colorScheme.onSurface.withValues(alpha: 0.06),
-          width: 1.2,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Row(
@@ -714,10 +704,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withValues(alpha: 0.12),
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHigh,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 22, color: Theme.of(context).primaryColor),
+            child: Icon(
+              icon,
+              size: 22,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1014,13 +1010,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     decoration: BoxDecoration(
                       color: Theme.of(
                         context,
-                      ).primaryColor.withValues(alpha: 0.12),
+                      ).colorScheme.surfaceContainerHigh,
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       icon,
                       size: 20,
-                      color: Theme.of(context).primaryColor,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(width: 14),

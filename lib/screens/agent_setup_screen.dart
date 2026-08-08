@@ -111,7 +111,7 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
             const SizedBox(height: AppTokens.spaceSm),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined,
-                  color: AppColors.amber),
+                  color: AppColors.textSecondaryDark),
               title: Text('Chart images',
                   style: AppFonts.body(color: AppColors.textPrimaryDark)),
               subtitle: Text('Screenshots of your setups',
@@ -122,7 +122,7 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined,
-                  color: AppColors.amber),
+                  color: AppColors.textSecondaryDark),
               title: Text('Strategy PDFs',
                   style: AppFonts.body(color: AppColors.textPrimaryDark)),
               subtitle: Text('Rules write-ups, playbooks',
@@ -589,10 +589,6 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: child,
@@ -609,8 +605,8 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.upload_file_outlined,
-                  color: AppColors.amber, size: 20),
+              Icon(Icons.upload_file_outlined,
+                  color: scheme.onSurfaceVariant, size: 20),
               const SizedBox(width: AppTokens.spaceSm),
               Text('Train from uploads',
                   style: AppFonts.heading(
@@ -644,7 +640,7 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
                         ? Icons.picture_as_pdf_outlined
                         : Icons.image_outlined,
                     size: 16,
-                    color: AppColors.amber,
+                    color: scheme.onSurfaceVariant,
                   ),
                   backgroundColor: AppColors.surfaceDark,
                   side: const BorderSide(color: AppColors.borderDark),
@@ -656,12 +652,12 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
                   },
                 ),
               ActionChip(
-                avatar: const Icon(Icons.add_rounded,
-                    size: 16, color: AppColors.amber),
+                avatar: Icon(Icons.add_rounded,
+                    size: 16, color: scheme.onSurfaceVariant),
                 label: Text('Add files',
                     style: AppFonts.body(
                         size: AppTokens.captionSize,
-                        color: AppColors.amber)),
+                        color: scheme.onSurfaceVariant)),
                 backgroundColor: AppColors.surfaceDark,
                 side: const BorderSide(color: AppColors.borderDark),
                 onPressed: _pickFiles,
@@ -704,10 +700,6 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
       decoration: BoxDecoration(
         color: AppColors.amber.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppTokens.radiusControl),
-        border: Border.all(
-          color: AppColors.amber.withValues(alpha: 0.35),
-          width: 1,
-        ),
       ),
       child: parseError is String
           ? Column(
@@ -833,8 +825,8 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.forum_outlined,
-                  color: AppColors.amber, size: 20),
+              Icon(Icons.forum_outlined,
+                  color: scheme.onSurfaceVariant, size: 20),
               const SizedBox(width: AppTokens.spaceSm),
               Text('Configure by conversation',
                   style: AppFonts.heading(
@@ -857,7 +849,6 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
             decoration: BoxDecoration(
               color: AppColors.surfaceDark,
               borderRadius: BorderRadius.circular(AppTokens.radiusControl),
-              border: Border.all(color: AppColors.borderDark, width: 1),
             ),
             child: _chatMessages.isEmpty
                 ? Center(
@@ -984,7 +975,8 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.tune_rounded, color: AppColors.amber, size: 20),
+              Icon(Icons.tune_rounded,
+                  color: scheme.onSurfaceVariant, size: 20),
               const SizedBox(width: AppTokens.spaceSm),
               Text('Current configuration',
                   style: AppFonts.heading(
@@ -1096,8 +1088,8 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
             width: double.infinity,
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.amber,
-                side: const BorderSide(color: AppColors.amberDim),
+                foregroundColor: scheme.onSurfaceVariant,
+                side: const BorderSide(color: AppColors.borderDark),
               ),
               onPressed: () {
                 Navigator.push(
@@ -1186,7 +1178,7 @@ class _AgentSetupScreenState extends State<AgentSetupScreen> {
           size: AppTokens.fontSizeTiny,
           weight: FontWeight.w700,
           letterSpacing: 0.8,
-          color: AppColors.amber,
+          color: AppColors.textSecondaryDark,
         ),
       ),
     );

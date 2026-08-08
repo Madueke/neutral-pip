@@ -301,11 +301,8 @@ class _RiskDashboardScreenState extends State<RiskDashboardScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDark
-              ? const [Color(0xFF1D2740), Color(0xFF161D2F)]
+              ? const [AppColors.surfaceElevatedDark, AppColors.surfaceDark]
               : const [Color(0xFFFFFFFF), Color(0xFFF4F6FA)],
-        ),
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
         ),
         boxShadow: AppShadows.card,
       ),
@@ -376,10 +373,6 @@ class _RiskDashboardScreenState extends State<RiskDashboardScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -463,15 +456,11 @@ class _RiskDashboardScreenState extends State<RiskDashboardScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
         children: [
-          const Icon(Icons.inbox_rounded, color: AppColors.amber, size: 28),
+          const Icon(Icons.inbox_rounded, color: AppColors.textMutedDark, size: 28),
           const SizedBox(height: AppTokens.spaceMd),
           Text(
             'No open positions',
@@ -543,10 +532,6 @@ class _RiskDashboardScreenState extends State<RiskDashboardScreen> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: scheme.outlineVariant,
-          width: AppTokens.borderWidth,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Row(

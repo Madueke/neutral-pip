@@ -386,9 +386,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
               // The shell reserves space for the floating nav, so the list
               // only needs a small closing gap of its own.
               padding: const EdgeInsets.fromLTRB(
+                AppTokens.spaceXl,
                 AppTokens.spaceLg,
-                AppTokens.spaceLg,
-                AppTokens.spaceLg,
+                AppTokens.spaceXl,
                 AppTokens.spaceXl,
               ),
               children: [
@@ -396,26 +396,36 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 const SizedBox(height: AppTokens.spaceXl),
                 FadeInUp(
                   delay: const Duration(milliseconds: 80),
+                  child: _buildHeroStat(isDark),
+                ),
+                const SizedBox(height: AppTokens.spaceXl),
+                FadeInUp(
+                  delay: const Duration(milliseconds: 120),
+                  child: _buildQuickActions(isDark),
+                ),
+                const SizedBox(height: AppTokens.spaceXxl),
+                FadeInUp(
+                  delay: const Duration(milliseconds: 160),
                   child: _buildBriefingCard(context),
                 ),
                 const SizedBox(height: AppTokens.spaceXl),
                 FadeInUp(
-                  delay: const Duration(milliseconds: 140),
+                  delay: const Duration(milliseconds: 200),
                   child: _buildStatGrid(isDark),
                 ),
-                const SizedBox(height: AppTokens.spaceXl),
-                FadeInUp(
-                  delay: const Duration(milliseconds: 200),
-                  child: _buildWatchlistTitle(secondary),
-                ),
-                const SizedBox(height: AppTokens.spaceMd),
+                const SizedBox(height: AppTokens.spaceXxl),
                 FadeInUp(
                   delay: const Duration(milliseconds: 240),
-                  child: _buildWatchlist(isDark),
+                  child: _buildWatchlistTitle(secondary),
                 ),
-                const SizedBox(height: AppTokens.spaceXl),
+                const SizedBox(height: AppTokens.spaceLg),
                 FadeInUp(
                   delay: const Duration(milliseconds: 280),
+                  child: _buildWatchlist(isDark),
+                ),
+                const SizedBox(height: AppTokens.spaceXxl),
+                FadeInUp(
+                  delay: const Duration(milliseconds: 320),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -440,20 +450,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     ],
                   ),
                 ),
-                const SizedBox(height: AppTokens.spaceMd),
+                const SizedBox(height: AppTokens.spaceLg),
                 _buildSignalsList(isDark),
-                const SizedBox(height: AppTokens.spaceXs),
+                const SizedBox(height: AppTokens.spaceXl),
                 FadeInUp(
                   child: _buildSectionTitle('Recent analyses', secondary),
                 ),
-                const SizedBox(height: AppTokens.spaceMd),
+                const SizedBox(height: AppTokens.spaceLg),
                 FadeInUp(child: _buildRecentAnalyses(isDark)),
-                const SizedBox(height: AppTokens.spaceXl),
-                FadeInUp(
-                  child: _buildSectionTitle('Quick actions', secondary),
-                ),
-                const SizedBox(height: AppTokens.spaceMd),
-                FadeInUp(child: _buildQuickActions(isDark)),
               ],
             ),
           ],
@@ -513,6 +517,158 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _MarketStatusChip(isDark: isDark),
       ],
     );
+  }
+
+  /// The single dominant number on Home (Bybit "Total Assets" pattern):
+  /// small label above, huge bold value, then a green/red change line.
+  /// Falls back to a balance derived from the account summary when the
+  /// backend is connected, otherwise shows Daily P/L or a neutral state.
+  Widget _buildHeroStat(bool isDark) {
+    final connected = _accountSummary?['connected'] == true;
+    final isLoading = _loadingAccount;
+    final hasError = _accountError != null;
+
+    // Prefer account equity/balance as the primary stat when available.
+    final rawBalance = _accountSummary?['balance'];
+    final rawEquity = _accountSummary?['equity'];
+    final num? equity = rawEquity is num
+        ? rawEquity
+        : (rawBalance is num ? rawBalance : null);
+    final dailyPL = _accountSummary?['dailyPLPercent'] as num? ?? 0.0;
+    final plColor = dailyPL >= 0 ? AppColors.bull : AppColors.bear;
+    final plPrefix = dailyPL >= 0 ? '+' : '';
+
+    String heroLabel;
+    String heroValue;
+    String heroChange;
+    String heroChangeHint;
+    Color changeColor;
+
+    if (!connected && !isLoading && !hasError) {
+      // No live account: show the daily P/L as the focal stat with a
+      // neutral "connect" hint instead of a phantom balance.
+      heroLabel = 'Daily P/L';
+      heroValue = isLoading ? '—' : '$plPrefix${dailyPL.toStringAsFixed(2)}%';
+      heroChange = 'Connect an account to see live P/L';
+      heroChangeHint = '';
+      changeColor = plColor;
+    } else if (equity != null) {
+      heroLabel = connected ? 'Account equity' : 'Account equity';
+      heroValue = _fmtCurrency(equity.toDouble());
+      heroChange = '${plPrefix}${dailyPL.toStringAsFixed(2)}% today';
+      heroChangeHint = connected ? '● Live' : '● Stale';
+      changeColor = plColor;
+    } else {
+      heroLabel = 'Daily P/L';
+      heroValue = isLoading ? '—' : '$plPrefix${dailyPL.toStringAsFixed(2)}%';
+      heroChange = 'No equity data yet';
+      heroChangeHint = '';
+      changeColor = plColor;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.spaceXl,
+        AppTokens.spaceXxl,
+        AppTokens.spaceXl,
+        AppTokens.spaceXxl,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? const [AppColors.surfaceElevatedDark, AppColors.surfaceDark]
+              : const [Color(0xFFFFFFFF), Color(0xFFF4F6FA)],
+        ),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            heroLabel.toUpperCase(),
+            style: AppFonts.body(
+              size: AppTokens.fontSizeTiny,
+              weight: FontWeight.w700,
+              letterSpacing: 1.2,
+              color: isDark
+                  ? AppColors.textMutedDark
+                  : AppColors.textMutedLight,
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+          Text(
+            heroValue,
+            style: AppFonts.heading(
+              size: 40,
+              weight: FontWeight.w700,
+              letterSpacing: -1.5,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: AppTokens.spaceSm),
+          Row(
+            children: [
+              Icon(
+                Icons.trending_up_rounded,
+                size: 16,
+                color: changeColor,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  heroChange,
+                  style: AppFonts.body(
+                    size: AppTokens.bodySize,
+                    weight: FontWeight.w600,
+                    color: changeColor,
+                  ),
+                ),
+              ),
+              if (heroChangeHint.isNotEmpty) ...[
+                const SizedBox(width: AppTokens.spaceSm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTokens.spaceSm,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.bull.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusPill),
+                  ),
+                  child: Text(
+                    heroChangeHint,
+                    style: AppFonts.body(
+                      size: AppTokens.fontSizeTiny,
+                      weight: FontWeight.w700,
+                      color: AppColors.bull,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Format a monetary value compactly (e.g. 128,450.00 -> $128,450).
+  static String _fmtCurrency(double v) {
+    final negative = v < 0;
+    final abs = v.abs();
+    String out;
+    if (abs >= 1000000) {
+      out = '\$${(abs / 1000000).toStringAsFixed(2)}M';
+    } else if (abs >= 1000) {
+      out = '\$${(abs / 1000).toStringAsFixed(2)}k';
+    } else {
+      out = '\$${abs.toStringAsFixed(2)}';
+    }
+    return negative ? '-$out' : out;
   }
 
   /// Side navigation drawer mirroring the Analysis screen's drawer: same
@@ -625,6 +781,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildBriefingCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final briefingText = _briefing?['text'] as String?;
     final isLoading = _loadingBriefing;
     final hasError = _briefingError != null;
@@ -647,15 +804,15 @@ class _HomeDashboardState extends State<HomeDashboard> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF1D2740),
-                Color(0xFF161D2F),
+                Color(0xFF1C1C20),
+                Color(0xFF131316),
               ],
             ),
-            border: Border.all(
-              color: hasError
-                  ? AppColors.bear.withValues(alpha: 0.5)
-                  : AppColors.amber.withValues(alpha: 0.25),
-            ),
+            border: hasError
+                ? Border.all(
+                    color: AppColors.bear.withValues(alpha: 0.5),
+                  )
+                : null,
             boxShadow: AppShadows.card,
           ),
           child: Row(
@@ -666,9 +823,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 decoration: BoxDecoration(
                   color: hasError
                       ? AppColors.bear.withValues(alpha: 0.14)
-                      : AppColors.amber.withValues(alpha: 0.14),
+                      : AppColors.surfaceElevatedDark,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: AppShadows.glow,
                 ),
                 child: hasError
                     ? const Icon(Icons.error_outline_rounded, color: AppColors.bear, size: 22)
@@ -678,7 +834,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                             height: 22,
                             child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.amber),
                           )
-                        : const Icon(Icons.auto_awesome_rounded, color: AppColors.amber, size: 22)),
+                        : Icon(Icons.auto_awesome_rounded, color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight, size: 22)),
               ),
               const SizedBox(width: AppTokens.spaceLg),
               Expanded(
@@ -741,7 +897,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
             label: 'Open trades',
             value: isLoading ? '—' : openTrades.toString(),
             icon: Icons.layers_rounded,
-            accent: AppColors.info,
+            accent: AppColors.textMutedDark,
             isLoading: isLoading,
           ),
         ),
@@ -907,13 +1063,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
             color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-            border: Border.all(
-              color: hasError
-                  ? AppColors.bear.withValues(alpha: 0.5)
-                  : (isNeutral
-                      ? AppColors.textMutedDark.withValues(alpha: 0.3)
-                      : AppColors.amber.withValues(alpha: 0.25)),
-            ),
+            border: hasError
+                ? Border.all(
+                    color: AppColors.bear.withValues(alpha: 0.5),
+                  )
+                : null,
             boxShadow: AppShadows.card,
           ),
           child: Column(
@@ -1114,7 +1268,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     } else {
       title = 'Live markets';
       statusIcon = Icons.sync_rounded;
-      statusColor = AppColors.info;
+      statusColor = secondary;
       statusText = 'Connecting...';
     }
     return Row(
@@ -1139,19 +1293,21 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildWatchlist(bool isDark) {
-      final border = isDark ? AppColors.borderDark : AppColors.borderLight;
       return Container(
         decoration: BoxDecoration(
           color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
           borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-          border: Border.all(color: border),
           boxShadow: AppShadows.card,
         ),
         child: Column(
           children: [
             for (var i = 0; i < _watchlist.length; i++)
               if (i > 0)
-                Divider(height: 1, color: border.withValues(alpha: 0.6))
+                Divider(
+                  height: 1,
+                  color: (isDark ? AppColors.borderDark : AppColors.borderLight)
+                      .withValues(alpha: 0.5),
+                )
               else
                 const SizedBox.shrink(),
             for (final item in _watchlist)
@@ -1330,14 +1486,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
       decoration: BoxDecoration(
         color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(color: border),
         boxShadow: AppShadows.card,
       ),
       child: Column(
         children: [
           for (var i = 0; i < _recentAnalyses.length; i++) ...[
             if (i > 0)
-              Divider(height: 1, color: border.withValues(alpha: 0.6))
+              Divider(height: 1, color: border.withValues(alpha: 0.5))
             else
               const SizedBox.shrink(),
             _AnalysisTile(
@@ -1354,24 +1509,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Widget _buildQuickActions(bool isDark) {
-    return GridView.count(
-      crossAxisCount: 4,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppTokens.spaceMd,
-      crossAxisSpacing: AppTokens.spaceMd,
-      childAspectRatio: 0.92,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _QuickAction(
           icon: Icons.mic_rounded,
           label: 'Voice Chat',
-          accent: AppColors.bull,
+          accent: null,
           onTap: () => widget.onQuickAction(HomeQuickAction.voice),
         ),
         _QuickAction(
           icon: Icons.link_rounded,
-          label: 'TradingView URL',
-          accent: AppColors.info,
+          label: 'Chart URL',
+          accent: null,
           onTap: () => widget.onQuickAction(HomeQuickAction.pasteUrl),
         ),
         _QuickAction(
@@ -1383,7 +1533,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _QuickAction(
           icon: Icons.image_rounded,
           label: 'Upload',
-          accent: AppColors.warning,
+          accent: null,
           onTap: () => widget.onQuickAction(HomeQuickAction.upload),
         ),
       ],
@@ -1500,13 +1650,10 @@ class _StatCard extends StatelessWidget {
     final displayLabel = isLoading && subtitle != null ? subtitle! : label;
 
     return Container(
-      padding: const EdgeInsets.all(AppTokens.spaceMd),
+      padding: const EdgeInsets.all(AppTokens.spaceLg),
       decoration: BoxDecoration(
         color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
-        ),
         boxShadow: AppShadows.card,
       ),
       child: Column(
@@ -1615,9 +1762,6 @@ class _EmptyCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
           borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-          border: Border.all(
-            color: isDark ? AppColors.borderDark : AppColors.borderLight,
-          ),
           boxShadow: AppShadows.card,
         ),
         child: Column(
@@ -1652,7 +1796,7 @@ class _EmptyCard extends StatelessWidget {
 class _QuickAction extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color accent;
+  final Color? accent;
   final VoidCallback onTap;
 
   const _QuickAction({
@@ -1665,52 +1809,51 @@ class _QuickAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-            border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.borderLight,
+    final Color iconColor = accent ??
+        (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight);
+    final Color circleBg = accent != null
+        ? accent!.withValues(alpha: 0.16)
+        : (isDark
+            ? AppColors.surfaceElevatedDark
+            : AppColors.surfaceElevatedLight);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTokens.radiusPill),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.spaceSm,
+          vertical: AppTokens.spaceSm,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: circleBg,
+                shape: BoxShape.circle,
+                boxShadow: AppShadows.card,
+              ),
+              child: Icon(icon, size: 22, color: iconColor),
             ),
-            boxShadow: AppShadows.card,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, size: 20, color: accent),
+            const SizedBox(height: AppTokens.spaceSm),
+            Text(
+              label,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: AppFonts.body(
+                size: AppTokens.fontSizeTiny,
+                weight: FontWeight.w600,
+                color: isDark
+                    ? AppColors.textSecondaryDark
+                    : AppColors.textSecondaryLight,
+                height: 1.2,
               ),
-              const SizedBox(height: AppTokens.spaceSm),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  label,
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppFonts.body(
-                    size: AppTokens.fontSizeTiny,
-                    weight: FontWeight.w600,
-                    color: isDark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1962,9 +2105,6 @@ class _SignalsEmptyCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppTokens.radiusCardLg),
             color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-            border: Border.all(
-              color: isDark ? AppColors.borderDark : AppColors.borderLight,
-            ),
             boxShadow: AppShadows.card,
           ),
           child: Column(
@@ -2051,9 +2191,6 @@ class _ActivitySheetState extends State<_ActivitySheet> {
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(AppTokens.radiusCardLg),
         ),
-        border: Border.all(
-          color: isDark ? AppColors.borderDark : AppColors.borderLight,
-        ),
       ),
       padding: EdgeInsets.only(bottom: bottom + AppTokens.spaceXl),
       child: Column(
@@ -2095,7 +2232,11 @@ class _ActivitySheetState extends State<_ActivitySheet> {
                     vertical: AppTokens.spaceXs,
                   ),
                   decoration: BoxDecoration(
-                    color: (_autoExecute ? AppColors.amber : AppColors.info)
+                    color: (_autoExecute
+                            ? AppColors.amber
+                            : (isDark
+                                  ? AppColors.textSecondaryDark
+                                  : AppColors.textSecondaryLight))
                         .withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(AppTokens.radiusPill),
                   ),
@@ -2107,7 +2248,11 @@ class _ActivitySheetState extends State<_ActivitySheet> {
                             ? Icons.bolt_rounded
                             : Icons.shield_outlined,
                         size: 14,
-                        color: _autoExecute ? AppColors.amber : AppColors.info,
+                        color: _autoExecute
+                            ? AppColors.amber
+                            : (isDark
+                                  ? AppColors.textSecondaryDark
+                                  : AppColors.textSecondaryLight),
                       ),
                       const SizedBox(width: 5),
                       Text(
@@ -2115,8 +2260,11 @@ class _ActivitySheetState extends State<_ActivitySheet> {
                         style: AppFonts.body(
                           size: AppTokens.fontSizeTiny,
                           weight: FontWeight.w700,
-                          color:
-                              _autoExecute ? AppColors.amber : AppColors.info,
+                          color: _autoExecute
+                              ? AppColors.amber
+                              : (isDark
+                                    ? AppColors.textSecondaryDark
+                                    : AppColors.textSecondaryLight),
                         ),
                       ),
                     ],
@@ -2199,14 +2347,20 @@ class _ActivityTile extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: (executed ? AppColors.amber : AppColors.info)
+          color: (executed
+                  ? AppColors.amber
+                  : (isDark
+                        ? AppColors.textSecondaryDark
+                        : AppColors.textSecondaryLight))
               .withValues(alpha: 0.13),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
           executed ? Icons.bolt_rounded : Icons.insights_rounded,
           size: 18,
-          color: executed ? AppColors.amber : AppColors.info,
+          color: executed
+              ? AppColors.amber
+              : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
         ),
       ),
       title: Text(
