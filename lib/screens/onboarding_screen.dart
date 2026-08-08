@@ -25,7 +25,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   int _currentStep = 0;
   bool _isMicrophoneGranted = false;
   bool _isNotificationsGranted = false;
-  bool _backendConfigured = false;
+  // Default to true since defaultTradingBackendUrl is always set
+  bool _backendConfigured = true;
 
   // AI config states
   String _selectedProvider = 'deepseek';
